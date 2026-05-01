@@ -11,5 +11,14 @@
   },
   "scripts": {
     "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.7.2",
+    "mammoth": "^1.8.0",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/pdf-parse": "^1.1.5",
+    "jszip": "^3.10.1"
   }
 }

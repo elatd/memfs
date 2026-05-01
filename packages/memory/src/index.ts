@@ -1,4 +1,6 @@
-import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { buildExtractMemoryNodesPrompt } from "./prompts/extract-memory-nodes.js";
 import { buildExtractReasoningMemoriesPrompt } from "./prompts/extract-reasoning-memories.js";
 
@@ -63,6 +65,24 @@ export interface MemoryModelOptions {
   chatModel?: string;
   embedModel?: string;
   useLlm?: boolean;
+  useLocalEmbeddings?: boolean;
+  localEmbedModel?: string;
+  allowEmbeddingFallback?: boolean;
+}
+
+export interface Bm25Document {
+  id: string;
+  text: string;
+}
+
+export interface RankedItem {
+  id: string;
+  score: number;
+}
+
+export interface RrfRanking {
+  items: RankedItem[];
+  weight?: number;
 }
 
 export type RecallMode =
@@ -820,25 +840,153 @@ export async function embedText(text: string, options: MemoryModelOptions = {}):
     try {
       return await requestEmbedding(text, { ...options, apiKey });
     } catch {
-      return fallbackEmbedding(text);
+      // Fall through to local embeddings before the deterministic lexical fallback.
+    }
+  }
+
+  if (shouldUseLocalEmbeddings(options)) {
+    try {
+      return await requestLocalOnnxEmbedding(text, options);
+    } catch (error) {
+      if (process.env.MEMORYFS_REQUIRE_LOCAL_EMBEDDINGS === "1" || options.allowEmbeddingFallback === false) {
+        throw error;
+      }
     }
   }
 
   return fallbackEmbedding(text);
 }
 
-export function fallbackEmbedding(text: string, dimensions = 256): number[] {
+type LocalFeatureExtractor = (
+  input: string,
+  options: { pooling: "mean"; normalize: boolean }
+) => Promise<{ data: Iterable<number> | ArrayLike<number> }>;
+
+const localEmbeddingPipelines = new Map<string, Promise<LocalFeatureExtractor>>();
+
+function shouldUseLocalEmbeddings(options: MemoryModelOptions): boolean {
+  if (options.useLocalEmbeddings !== undefined) return options.useLocalEmbeddings;
+  const env = process.env.MEMORYFS_USE_LOCAL_EMBEDDINGS;
+  if (env === "0" || env === "false") return false;
+  if (env === "1" || env === "true") return true;
+  return process.env.NODE_ENV !== "test";
+}
+
+async function requestLocalOnnxEmbedding(text: string, options: MemoryModelOptions): Promise<number[]> {
+  const model = options.localEmbedModel ?? process.env.MEMORYFS_LOCAL_EMBED_MODEL ?? "Xenova/all-MiniLM-L6-v2";
+  let pipelinePromise = localEmbeddingPipelines.get(model);
+  if (!pipelinePromise) {
+    const nextPipelinePromise = createLocalEmbeddingPipeline(model).catch((error) => {
+      if (localEmbeddingPipelines.get(model) === nextPipelinePromise) {
+        localEmbeddingPipelines.delete(model);
+      }
+      throw error;
+    });
+    pipelinePromise = nextPipelinePromise;
+    localEmbeddingPipelines.set(model, pipelinePromise);
+  }
+  const extractor = await pipelinePromise;
+  const output = await extractor(text.slice(0, 8192), { pooling: "mean", normalize: true });
+  const vector = Array.from(output.data as Iterable<number>);
+  if (vector.length === 0) {
+    throw new Error("Local ONNX embedding returned an empty vector.");
+  }
+  return normalizeVector(vector);
+}
+
+async function createLocalEmbeddingPipeline(model: string): Promise<LocalFeatureExtractor> {
+  const transformers = await loadTransformersModule();
+  const envConfig = transformers.env as {
+    allowRemoteModels?: boolean;
+    allowLocalModels?: boolean;
+    cacheDir?: string;
+  };
+  envConfig.allowLocalModels = true;
+  envConfig.allowRemoteModels = process.env.MEMORYFS_LOCAL_EMBED_LOCAL_ONLY === "1" ? false : true;
+  if (process.env.MEMORYFS_MODEL_CACHE_DIR) {
+    envConfig.cacheDir = process.env.MEMORYFS_MODEL_CACHE_DIR;
+  }
+  const pipelineOptions: { local_files_only: boolean; device?: "wasm" } = {
+    local_files_only: process.env.MEMORYFS_LOCAL_EMBED_LOCAL_ONLY === "1"
+  };
+  if (process.env.MEMORYFS_ONNX_RUNTIME === "web") {
+    pipelineOptions.device = "wasm";
+  }
+  const extractor = await transformers.pipeline("feature-extraction", model, pipelineOptions);
+  return extractor as unknown as LocalFeatureExtractor;
+}
+
+async function loadTransformersModule(): Promise<typeof import("@huggingface/transformers")> {
+  if (process.env.MEMORYFS_ONNX_RUNTIME !== "web") {
+    return import("@huggingface/transformers");
+  }
+
+  const require = createRequire(import.meta.url);
+  const nodeEntry = require.resolve("@huggingface/transformers");
+  const distDir = path.dirname(nodeEntry);
+  const webEntry = path.join(distDir, "transformers.web.js");
+  const mod = (await import(pathToFileURL(webEntry).href)) as typeof import("@huggingface/transformers");
+  const onnxBackend = (mod.env as { backends?: { onnx?: { wasm?: { wasmPaths?: string } } } }).backends?.onnx;
+  if (onnxBackend?.wasm && !process.env.MEMORYFS_ONNX_WASM_REMOTE) {
+    onnxBackend.wasm.wasmPaths = pathToFileURL(`${distDir}${path.sep}`).href;
+  }
+  return mod;
+}
+
+export function fallbackEmbedding(text: string, dimensions = 384): number[] {
   const vector = Array.from({ length: dimensions }, () => 0);
   const tokens = tokenize(text);
 
-  for (const token of tokens) {
-    const hash = createHash("sha256").update(token).digest();
-    const index = hash.readUInt32BE(0) % dimensions;
-    const sign = hash[4] % 2 === 0 ? 1 : -1;
-    vector[index] += sign;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    const first = alphaIndex(token.charCodeAt(0));
+    const second = alphaIndex(token.charCodeAt(1) || token.charCodeAt(0));
+    const last = alphaIndex(token.charCodeAt(token.length - 1));
+    vector[first] += 1;
+    vector[26 + Math.min(15, token.length)] += 0.35;
+    vector[42 + first] += token.length > 6 ? 0.25 : 0.1;
+    vector[68 + ((first * 26 + second) % 128)] += 0.65;
+    vector[196 + ((first * 26 + last) % 128)] += 0.45;
+
+    const semanticIndex = semanticFeatureIndex(token);
+    if (semanticIndex !== null) {
+      vector[324 + semanticIndex] += 1.2;
+    }
+
+    const next = tokens[index + 1];
+    if (next) {
+      const nextFirst = alphaIndex(next.charCodeAt(0));
+      vector[348 + ((first * 26 + nextFirst) % 36)] += 0.5;
+    }
   }
 
   return normalizeVector(vector);
+}
+
+function alphaIndex(code: number): number {
+  const lower = String.fromCharCode(code).toLowerCase().charCodeAt(0);
+  if (lower >= 97 && lower <= 122) return lower - 97;
+  if (lower >= 48 && lower <= 57) return lower - 48;
+  return 25;
+}
+
+function semanticFeatureIndex(token: string): number | null {
+  const groups = [
+    ["prefer", "preference", "want", "like"],
+    ["decision", "decide", "choose", "chosen"],
+    ["constraint", "must", "never", "avoid", "require"],
+    ["error", "fail", "failure", "bug", "exception"],
+    ["task", "todo", "follow", "next", "action"],
+    ["question", "unknown", "unresolved", "tbd"],
+    ["research", "finding", "evidence", "source"],
+    ["run", "result", "summary", "handoff"],
+    ["project", "onboard", "profile", "user"],
+    ["security", "protected", "trust", "audit"],
+    ["sync", "cloud", "team", "local"],
+    ["file", "path", "blob", "raw"]
+  ];
+  const index = groups.findIndex((group) => group.some((entry) => token.startsWith(entry)));
+  return index === -1 ? null : index;
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {
@@ -871,6 +1019,69 @@ export function keywordScore(query: string, target: string): number {
   return matches / queryTokens.length;
 }
 
+export function bm25Scores(query: string, documents: Bm25Document[]): Map<string, number> {
+  const queryTerms = unique(tokenize(query));
+  const tokenized = documents.map((document) => ({
+    id: document.id,
+    tokens: tokenize(document.text)
+  }));
+  if (queryTerms.length === 0 || tokenized.length === 0) {
+    return new Map(documents.map((document) => [document.id, 0]));
+  }
+
+  const documentCount = tokenized.length;
+  const averageLength =
+    tokenized.reduce((sum, document) => sum + document.tokens.length, 0) / Math.max(1, documentCount);
+  const documentFrequencies = new Map<string, number>();
+  for (const term of queryTerms) {
+    documentFrequencies.set(
+      term,
+      tokenized.filter((document) => new Set(document.tokens).has(term)).length
+    );
+  }
+
+  const k1 = 1.2;
+  const b = 0.75;
+  const rawScores = new Map<string, number>();
+  for (const document of tokenized) {
+    const termFrequency = new Map<string, number>();
+    for (const token of document.tokens) {
+      termFrequency.set(token, (termFrequency.get(token) ?? 0) + 1);
+    }
+
+    let score = 0;
+    for (const term of queryTerms) {
+      const frequency = termFrequency.get(term) ?? 0;
+      if (frequency === 0) continue;
+      const df = documentFrequencies.get(term) ?? 0;
+      const idf = Math.log(1 + (documentCount - df + 0.5) / (df + 0.5));
+      const denominator = frequency + k1 * (1 - b + b * (document.tokens.length / Math.max(1, averageLength)));
+      score += idf * ((frequency * (k1 + 1)) / denominator);
+    }
+    rawScores.set(document.id, score);
+  }
+
+  return normalizeScoreMap(rawScores, documents.map((document) => document.id));
+}
+
+export function reciprocalRankFusion(rankings: RrfRanking[], k = 60): Map<string, number> {
+  const scores = new Map<string, number>();
+  const ids = new Set<string>();
+  for (const ranking of rankings) {
+    const weight = ranking.weight ?? 1;
+    ranking.items
+      .filter((item) => Number.isFinite(item.score))
+      .sort((left, right) => right.score - left.score)
+      .forEach((item, index) => {
+        ids.add(item.id);
+        if (item.score <= 0) return;
+        const rank = index + 1;
+        scores.set(item.id, (scores.get(item.id) ?? 0) + weight / (k + rank));
+      });
+  }
+  return normalizeScoreMap(scores, [...ids]);
+}
+
 export function tokenize(text: string): string[] {
   return text
     .toLowerCase()
@@ -895,6 +1106,21 @@ function normalizeVector(vector: number[]): number[] {
     return vector;
   }
   return vector.map((value) => value / norm);
+}
+
+function normalizeScoreMap(scores: Map<string, number>, ids: string[]): Map<string, number> {
+  const complete = new Map<string, number>();
+  for (const id of ids) {
+    complete.set(id, scores.get(id) ?? 0);
+  }
+  const max = Math.max(0, ...complete.values());
+  if (max === 0) {
+    return complete;
+  }
+  for (const [id, score] of complete) {
+    complete.set(id, Math.max(0, score / max));
+  }
+  return complete;
 }
 
 function unique<T>(items: T[]): T[] {

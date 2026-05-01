@@ -27,6 +27,7 @@ export interface FileExtractor {
 }
 
 const textDecoder = new TextDecoder("utf-8", { fatal: false });
+const textEncoder = new TextEncoder();
 
 export const markdownExtractor: FileExtractor = {
   name: "markdown",
@@ -320,12 +321,86 @@ export const terminalLogExtractor: FileExtractor = {
   }
 };
 
-export const pdfExtractor: FileExtractor = unsupportedExtractor("pdf", ["pdf"], "application/pdf");
-export const docxExtractor: FileExtractor = unsupportedExtractor(
-  "docx",
-  ["docx"],
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-);
+export const pdfExtractor: FileExtractor = {
+  name: "pdf",
+  version: "1.0.0",
+  supports: (input) => input.mimeType === "application/pdf" || extension(input.path, ["pdf"]),
+  async extract(input) {
+    try {
+      const pdfParse = await loadPdfParse();
+      let pageNumber = 0;
+      const parsed = await pdfParse(inputBytes(input), {
+        pagerender: async (pageData: {
+          getTextContent: () => Promise<{ items: Array<{ str?: string }> }>;
+        }) => {
+          pageNumber += 1;
+          const content = await pageData.getTextContent();
+          const text = content.items
+            .map((item) => item.str ?? "")
+            .join(" ")
+            .replace(/\s+/g, " ")
+            .trim();
+          return `\n\n[[MEMFS_PDF_PAGE:${pageNumber}]]\n${text}`;
+        }
+      });
+      const parsedText = String(parsed.text ?? "");
+      const sections = pdfPageSections(parsedText);
+      const text = stripPdfMarkers(parsedText).trim();
+      return {
+        text,
+        sections: sections.length ? sections : paragraphSections(text, "pdf"),
+        metadata: {
+          type: "pdf",
+          page_count: Number(parsed.numpages ?? sections.length ?? 0),
+          info: parsed.info ?? null
+        }
+      };
+    } catch (error) {
+      const fallback = extractSimplePdfText(inputBytes(input));
+      if (fallback.sections.length > 0) {
+        return {
+          text: fallback.text,
+          sections: fallback.sections,
+          metadata: {
+            type: "pdf",
+            page_count: fallback.pageCount,
+            fallback_extractor: "literal_pdf_text",
+            parser_error: (error as Error).message
+          }
+        };
+      }
+      return failedDocument(input, "pdf", `PDF extraction failed: ${(error as Error).message}`);
+    }
+  }
+};
+
+export const docxExtractor: FileExtractor = {
+  name: "docx",
+  version: "1.0.0",
+  supports: (input) =>
+    input.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    extension(input.path, ["docx"]),
+  async extract(input) {
+    try {
+      const mammoth = await import("mammoth");
+      const result = await mammoth.extractRawText({ buffer: inputBytes(input) });
+      const text = result.value.trim();
+      return {
+        text,
+        sections: docxParagraphSections(text),
+        metadata: {
+          type: "docx",
+          messages: result.messages.map((message) => ({
+            type: message.type,
+            message: message.message
+          }))
+        }
+      };
+    } catch (error) {
+      return failedDocument(input, "docx", `DOCX extraction failed: ${(error as Error).message}`);
+    }
+  }
+};
 export const imageExtractor: FileExtractor = {
   name: "image",
   version: "1.0.0",
@@ -372,9 +447,141 @@ function inputText(input: ExtractorInput): string {
   return "";
 }
 
+function inputBytes(input: ExtractorInput): Buffer {
+  if (input.bytes) return Buffer.from(input.bytes);
+  return Buffer.from(textEncoder.encode(input.text ?? ""));
+}
+
 function extension(path: string, extensions: string[]): boolean {
   const ext = path.split(".").pop()?.toLowerCase();
   return Boolean(ext && extensions.includes(ext));
+}
+
+type PdfParse = (
+  dataBuffer: Buffer,
+  options?: Record<string, unknown>
+) => Promise<{
+  text?: string;
+  numpages?: number;
+  info?: unknown;
+}>;
+
+async function loadPdfParse(): Promise<PdfParse> {
+  const mod = await import("pdf-parse");
+  return (mod.default ?? mod) as unknown as PdfParse;
+}
+
+function pdfPageSections(text: string): ExtractedSection[] {
+  const sections: ExtractedSection[] = [];
+  const markerPattern = /\[\[MEMFS_PDF_PAGE:(\d+)]]\n([\s\S]*?)(?=\n+\[\[MEMFS_PDF_PAGE:|$)/g;
+  for (const match of text.matchAll(markerPattern)) {
+    const page = Number(match[1]);
+    const body = (match[2] ?? "").replace(/\s+/g, " ").trim();
+    if (!body) continue;
+    sections.push({
+      id: `pdf-page-${page}`,
+      title: `Page ${page}`,
+      text: body,
+      sourceLocation: {
+        type: "pdf",
+        page,
+        bbox: null
+      }
+    });
+  }
+  return sections;
+}
+
+function stripPdfMarkers(text: string): string {
+  return text.replace(/\[\[MEMFS_PDF_PAGE:\d+]]\n/g, "").replace(/[ \t]+\n/g, "\n");
+}
+
+function extractSimplePdfText(bytes: Buffer): { text: string; sections: ExtractedSection[]; pageCount: number } {
+  const source = bytes.toString("latin1");
+  if (!source.startsWith("%PDF-")) {
+    return { text: "", sections: [], pageCount: 0 };
+  }
+
+  const countMatch = /\/Type\s*\/Pages[\s\S]*?\/Count\s+(\d+)/.exec(source);
+  const pageCount = countMatch?.[1]
+    ? Number(countMatch[1])
+    : Math.max(1, [...source.matchAll(/\/Type\s*\/Page\b/g)].length);
+  const streams = [...source.matchAll(/\bstream\r?\n([\s\S]*?)\r?\nendstream/g)]
+    .map((match) => match[1] ?? "")
+    .filter((stream) => stream.includes("Tj") || stream.includes("TJ"));
+  const sections: ExtractedSection[] = [];
+
+  streams.forEach((stream, index) => {
+    const values = extractPdfStringLiterals(stream);
+    const text = values.join(" ").replace(/\s+/g, " ").trim();
+    if (!text) return;
+    const page = Math.min(index + 1, Math.max(1, pageCount));
+    sections.push({
+      id: `pdf-page-${page}`,
+      title: `Page ${page}`,
+      text,
+      sourceLocation: {
+        type: "pdf",
+        page,
+        bbox: null
+      }
+    });
+  });
+
+  return {
+    text: sections.map((section) => section.text).join("\n\n"),
+    sections,
+    pageCount: Math.max(1, pageCount || sections.length)
+  };
+}
+
+function extractPdfStringLiterals(stream: string): string[] {
+  const values: string[] = [];
+  const pattern = /\((?:\\.|[^\\)])*\)\s*Tj|\[(?:\s*\((?:\\.|[^\\)])*\)\s*)+]\s*TJ/g;
+  for (const match of stream.matchAll(pattern)) {
+    const literalMatches = [...match[0].matchAll(/\((?:\\.|[^\\)])*\)/g)];
+    for (const literal of literalMatches) {
+      values.push(unescapePdfLiteral(literal[0].slice(1, -1)));
+    }
+  }
+  return values.filter(Boolean);
+}
+
+function unescapePdfLiteral(value: string): string {
+  return value
+    .replace(/\\([nrtbf()\\])/g, (_match, escaped: string) => {
+      switch (escaped) {
+        case "n":
+          return "\n";
+        case "r":
+          return "\r";
+        case "t":
+          return "\t";
+        case "b":
+          return "\b";
+        case "f":
+          return "\f";
+        default:
+          return escaped;
+      }
+    })
+    .replace(/\\([0-7]{1,3})/g, (_match, octal: string) => String.fromCharCode(parseInt(octal, 8)));
+}
+
+function docxParagraphSections(text: string): ExtractedSection[] {
+  return text
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph, index) => ({
+      id: `docx-paragraph-${index + 1}`,
+      title: index === 0 ? "Document start" : undefined,
+      text: paragraph,
+      sourceLocation: {
+        type: "docx",
+        paragraph_index: index + 1
+      }
+    }));
 }
 
 function paragraphSections(text: string, type: string, title?: string): ExtractedSection[] {
@@ -521,6 +728,21 @@ function unsupportedDocument(input: ExtractorInput, type: string, reason: string
     metadata: {
       type,
       unsupported: true,
+      reason,
+      path: input.path,
+      mime_type: input.mimeType ?? null
+    }
+  };
+}
+
+function failedDocument(input: ExtractorInput, type: string, reason: string): ExtractedDocument {
+  return {
+    text: "",
+    sections: [],
+    metadata: {
+      type,
+      unsupported: true,
+      extraction_failed: true,
       reason,
       path: input.path,
       mime_type: input.mimeType ?? null

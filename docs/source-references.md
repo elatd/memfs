@@ -21,6 +21,14 @@ Example source locations:
 ```
 
 ```json
+{ "type": "pdf", "page": 3, "bbox": null }
+```
+
+```json
+{ "type": "docx", "paragraph_index": 12 }
+```
+
+```json
 { "type": "code", "start_line": 10, "end_line": 35, "symbol": "createUser" }
 ```
 

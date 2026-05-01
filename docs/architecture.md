@@ -4,7 +4,7 @@ MemFS has four layers:
 
 - `packages/core`: workspace, file, blob, audit, protected path, ingestion, and recall orchestration.
 - `packages/db`: SQLite connection, migrations, and metadata adapter interfaces.
-- `packages/memory`: chunking, prompt templates, extraction validation, LLM calls, fallback extraction, embeddings, and scoring helpers.
+- `packages/memory`: chunking, prompt templates, extraction validation, LLM calls, fallback extraction, local/remote embeddings, BM25/RRF retrieval helpers, and scoring helpers.
 - `packages/memory/extractors`: clean-room file extractors for derived text and source locations.
 - `packages/virtual-bash`: a deterministic command interpreter for agents.
 - Apps: Fastify API, CLI, React dashboard, and MCP server.
@@ -37,20 +37,21 @@ Write flow:
 Extraction flow:
 
 1. Detect file type from path and MIME type.
-2. Run a matching extractor for Markdown, text, JSON, CSV, HTML, code, or terminal logs.
+2. Run a matching extractor for Markdown, text, JSON, CSV, HTML, PDF, DOCX, code, or terminal logs.
 3. Store derived text in `extracted_sources` with extractor metadata.
 4. Keep the raw blob as canonical source.
 5. During ingestion, create memory nodes from extracted sections and store `source_location_json`.
-6. Unsupported formats store an honest unsupported extraction record and create no memory nodes.
+6. Unsupported formats or extraction failures store an honest unsupported/extraction-failed record and create no memory nodes.
 
 Recall flow:
 
-1. Embed the query.
+1. Embed the query through the configured OpenAI-compatible embedding API or the local ONNX embedding model.
 2. Plan the query intent with deterministic heuristics.
-3. Score trigger, summary, detail or raw excerpt, keywords, importance, recency, path/project match, and graph context.
-4. Return source paths and raw references with every result.
-5. Return source kind and source location metadata when available.
-6. Include why explanations, graph links, detail, or raw content only when requested.
+3. Score trigger, summary, detail or raw excerpt, BM25 keywords, dense similarities, importance, recency, path/project match, and graph context.
+4. Fuse dense and lexical rankings with Reciprocal Rank Fusion, then expand across 1-2 graph hops.
+5. Return source paths and raw references with every result.
+6. Return source kind and source location metadata when available.
+7. Include why explanations, graph links, detail, or raw content only when requested.
 
 Agent run flow:
 

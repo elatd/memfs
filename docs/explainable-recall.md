@@ -33,14 +33,19 @@ When `include_why=true`, each result includes score components:
 - `trigger_similarity`
 - `summary_similarity`
 - `keyword_score`
+- `bm25_score`
+- `rrf_score`
 - `detail_similarity`
 - `raw_excerpt_similarity`
 - `importance_score`
 - `recency_score`
 - `path_project_score`
 - `graph_score`
+- `graph_expansion_score`
 - `matched_terms`
 - `explanation`
+
+Retrieval combines dense embeddings, BM25 term scoring, Reciprocal Rank Fusion, and 1-2 hop graph expansion. The graph expansion can surface linked memories that are not the strongest direct text match, but every returned result still includes `source_path` and `raw_ref`.
 
 Example explanation:
 
