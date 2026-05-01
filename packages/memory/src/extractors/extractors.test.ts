@@ -154,7 +154,7 @@ async function createPdfBuffer(text: string): Promise<Buffer> {
     size: 18,
     font
   });
-  return Buffer.from(await pdf.save());
+  return Buffer.from(await pdf.save({ useObjectStreams: false }));
 }
 
 async function createDocxBuffer(text: string): Promise<Buffer> {
