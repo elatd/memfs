@@ -57,7 +57,7 @@ corepack prepare pnpm@9.15.4 --activate
 - `MEMFS_AUTH_REQUIRED`: require actor auth for API requests.
 - `MEMFS_ENCRYPTION_KEY`: reserved for encrypted cloud deployments.
 
-Without an API key, MemFS uses deterministic local extraction and hash embeddings so the MVP remains fully local. The demo seed uses the deterministic path by default.
+Without an API key, MemFS uses deterministic local extraction and hash embeddings so local operation still works. The demo seed uses the deterministic path by default.
 
 ## Run
 
