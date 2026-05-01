@@ -356,6 +356,19 @@ export const pdfExtractor: FileExtractor = {
         }
       };
     } catch (error) {
+      const fallback = extractSimplePdfText(inputBytes(input));
+      if (fallback.sections.length > 0) {
+        return {
+          text: fallback.text,
+          sections: fallback.sections,
+          metadata: {
+            type: "pdf",
+            page_count: fallback.pageCount,
+            fallback_extractor: "literal_pdf_text",
+            parser_error: (error as Error).message
+          }
+        };
+      }
       return failedDocument(input, "pdf", `PDF extraction failed: ${(error as Error).message}`);
     }
   }
@@ -481,6 +494,78 @@ function pdfPageSections(text: string): ExtractedSection[] {
 
 function stripPdfMarkers(text: string): string {
   return text.replace(/\[\[MEMFS_PDF_PAGE:\d+]]\n/g, "").replace(/[ \t]+\n/g, "\n");
+}
+
+function extractSimplePdfText(bytes: Buffer): { text: string; sections: ExtractedSection[]; pageCount: number } {
+  const source = bytes.toString("latin1");
+  if (!source.startsWith("%PDF-")) {
+    return { text: "", sections: [], pageCount: 0 };
+  }
+
+  const countMatch = /\/Type\s*\/Pages[\s\S]*?\/Count\s+(\d+)/.exec(source);
+  const pageCount = countMatch?.[1]
+    ? Number(countMatch[1])
+    : Math.max(1, [...source.matchAll(/\/Type\s*\/Page\b/g)].length);
+  const streams = [...source.matchAll(/\bstream\r?\n([\s\S]*?)\r?\nendstream/g)]
+    .map((match) => match[1] ?? "")
+    .filter((stream) => stream.includes("Tj") || stream.includes("TJ"));
+  const sections: ExtractedSection[] = [];
+
+  streams.forEach((stream, index) => {
+    const values = extractPdfStringLiterals(stream);
+    const text = values.join(" ").replace(/\s+/g, " ").trim();
+    if (!text) return;
+    const page = Math.min(index + 1, Math.max(1, pageCount));
+    sections.push({
+      id: `pdf-page-${page}`,
+      title: `Page ${page}`,
+      text,
+      sourceLocation: {
+        type: "pdf",
+        page,
+        bbox: null
+      }
+    });
+  });
+
+  return {
+    text: sections.map((section) => section.text).join("\n\n"),
+    sections,
+    pageCount: Math.max(1, pageCount || sections.length)
+  };
+}
+
+function extractPdfStringLiterals(stream: string): string[] {
+  const values: string[] = [];
+  const pattern = /\((?:\\.|[^\\)])*\)\s*Tj|\[(?:\s*\((?:\\.|[^\\)])*\)\s*)+]\s*TJ/g;
+  for (const match of stream.matchAll(pattern)) {
+    const literalMatches = [...match[0].matchAll(/\((?:\\.|[^\\)])*\)/g)];
+    for (const literal of literalMatches) {
+      values.push(unescapePdfLiteral(literal[0].slice(1, -1)));
+    }
+  }
+  return values.filter(Boolean);
+}
+
+function unescapePdfLiteral(value: string): string {
+  return value
+    .replace(/\\([nrtbf()\\])/g, (_match, escaped: string) => {
+      switch (escaped) {
+        case "n":
+          return "\n";
+        case "r":
+          return "\r";
+        case "t":
+          return "\t";
+        case "b":
+          return "\b";
+        case "f":
+          return "\f";
+        default:
+          return escaped;
+      }
+    })
+    .replace(/\\([0-7]{1,3})/g, (_match, octal: string) => String.fromCharCode(parseInt(octal, 8)));
 }
 
 function docxParagraphSections(text: string): ExtractedSection[] {

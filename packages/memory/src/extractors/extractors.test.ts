@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
-import { PDFDocument, StandardFonts } from "pdf-lib";
 import {
   codeExtractor,
   csvExtractor,
@@ -144,17 +143,30 @@ describe("file extractors", () => {
   });
 });
 
-async function createPdfBuffer(text: string): Promise<Buffer> {
-  const pdf = await PDFDocument.create();
-  const page = pdf.addPage([612, 792]);
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  page.drawText(text, {
-    x: 72,
-    y: 720,
-    size: 18,
-    font
-  });
-  return Buffer.from(await pdf.save({ useObjectStreams: false }));
+function createPdfBuffer(text: string): Buffer {
+  const escaped = text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  const stream = `BT /F1 18 Tf 72 720 Td (${escaped}) Tj ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${Buffer.byteLength(stream, "latin1")} >>\nstream\n${stream}\nendstream`
+  ];
+  let pdf = "%PDF-1.3\n%\xE2\xE3\xCF\xD3\n";
+  const offsets = [0];
+  for (let index = 0; index < objects.length; index += 1) {
+    offsets.push(Buffer.byteLength(pdf, "latin1"));
+    pdf += `${index + 1} 0 obj\n${objects[index]}\nendobj\n`;
+  }
+  const xrefOffset = Buffer.byteLength(pdf, "latin1");
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+  for (const offset of offsets.slice(1)) {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(pdf, "latin1");
 }
 
 async function createDocxBuffer(text: string): Promise<Buffer> {
