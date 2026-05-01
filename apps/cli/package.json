@@ -1,0 +1,20 @@
+{
+  "name": "@memoryfs/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "memfs": "./bin/memfs.js"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@memoryfs/sdk": "workspace:*",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@memoryfs/api": "workspace:*"
+  }
+}

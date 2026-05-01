@@ -1,0 +1,14 @@
+{
+  "name": "@memoryfs/memory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./extractors": "./src/extractors/index.ts",
+    "./prompts/extract-memory-nodes": "./src/prompts/extract-memory-nodes.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit"
+  }
+}

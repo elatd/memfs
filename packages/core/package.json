@@ -1,0 +1,17 @@
+{
+  "name": "@memoryfs/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./adapters": "./src/adapters.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@memoryfs/db": "workspace:*",
+    "@memoryfs/memory": "workspace:*"
+  }
+}

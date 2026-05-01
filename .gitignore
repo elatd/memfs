@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.DS_Store
+data/*
+!data/.gitkeep
+*.db
+*.db-shm
+*.db-wal
+*.tsbuildinfo

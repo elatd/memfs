@@ -1,0 +1,21 @@
+{
+  "name": "@memoryfs/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./adapters": "./src/adapters.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pg": "^8.20.0",
+    "sql.js": "^1.12.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.0",
+    "@types/sql.js": "^1.4.9"
+  }
+}
