@@ -61,6 +61,16 @@ Agent run flow:
 5. Compile the run into candidate memories and suggested promotions.
 6. Create handoff summaries for the next agent or human.
 
+Memory curation flow:
+
+1. Agent runs, user events, files, and tool outputs are treated as source material.
+2. A curator model extracts structured candidate memories rather than letting the main task agent silently rewrite durable memory.
+3. MemFS validates candidates, checks source references, deduplicates, detects conflicts, and applies protected-path rules.
+4. Risky, inferred, external, global, or conflicting candidates remain pending for review or optional verifier-model checks.
+5. Approved memory is written to workspace files, indexed for recall, and recorded in the audit log.
+
+See [Memory Curation](./memory-curation.md) for model-size guidance, safety rules, and candidate shape.
+
 Agent UX surfaces:
 
 - CLI uses the local API and stores the selected workspace in `~/.memfs/config.json`.
