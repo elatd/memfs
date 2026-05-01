@@ -1,11 +1,14 @@
 import { openMemoryDatabase, type SqliteDatabase } from "@memoryfs/db";
 import {
+  bm25Scores,
   cosineSimilarity,
   embedText,
   extractMemoryNodesFromContent,
   keywordScore,
   planRecallQuery,
+  reciprocalRankFusion,
   tokenize,
+  type RankedItem,
   type ExtractedMemoryNode,
   type MemoryModelOptions,
   type MemoryType,
@@ -318,10 +321,13 @@ export interface WhyRecalled {
   keyword_score: number;
   detail_similarity: number;
   raw_excerpt_similarity: number;
+  bm25_score?: number;
+  rrf_score?: number;
   importance_score: number;
   recency_score: number;
   path_project_score: number;
   graph_score: number;
+  graph_expansion_score?: number;
   matched_terms: string[];
   matched_trigger: boolean;
   matched_summary: boolean;
@@ -928,7 +934,20 @@ export class MemoryFS {
       if (node.status === "pending" && !options.trust_levels?.includes(node.trust_level)) return false;
       return true;
     });
-    const scored = await Promise.all(
+    const nodeTexts = new Map(
+      nodes.map((node) => [
+        node.id,
+        `${node.summary} ${node.trigger} ${node.detail ?? ""} ${node.raw_excerpt ?? ""} ${node.tags.join(" ")} ${node.source_path}`
+      ])
+    );
+    const bm25ById = bm25Scores(
+      queryText,
+      nodes.map((node) => ({
+        id: node.id,
+        text: nodeTexts.get(node.id) ?? ""
+      }))
+    );
+    const preliminary = await Promise.all(
       nodes.map(async (node) => {
         const embeddings = this.getNodeEmbeddings(node.id);
         const triggerSimilarity = unitSimilarity(
@@ -947,58 +966,116 @@ export class MemoryFS {
           keywordScore(queryText, `${node.summary} ${node.trigger} ${node.detail ?? ""}`),
           keywordScore(queryText, `${node.source_path} ${node.tags.join(" ")}`)
         );
+        const bm25 = bm25ById.get(node.id) ?? 0;
+        const lexical = Math.max(keyword, bm25);
         const importance = (node.importance - 1) / 4;
         const recency = recencyScore(node.updated_at);
         const pathProject = pathOrProjectMatch(queryText, node.source_path, options.project_hint);
         const nodeLinks = this.getMemoryNodeLinks(workspaceId, node.id);
-        const graphScore = this.graphScoreForNode(queryText, nodeLinks);
+        const directGraphScore = this.graphScoreForNode(queryText, nodeLinks);
         const strategy = plan.retrieval_strategy;
-        const baseScore =
+        const preliminaryScore =
           strategy.trigger_weight * triggerSimilarity +
           strategy.summary_weight * summarySimilarity +
-          strategy.keyword_weight * keyword +
+          strategy.keyword_weight * lexical +
           strategy.detail_weight * Math.max(detailSimilarity, rawExcerptSimilarity * 0.75) +
           strategy.importance_weight * importance +
           strategy.recency_weight * recency +
-          strategy.path_project_weight * pathProject +
-          strategy.graph_weight * graphScore;
-        const score = baseScore * trustScoreMultiplier(node);
-        const terms = matchedTerms(queryText, `${node.summary} ${node.trigger} ${node.detail ?? ""} ${node.tags.join(" ")} ${node.source_path}`);
-        const why: WhyRecalled = {
-          trigger_similarity: round4(triggerSimilarity),
-          summary_similarity: round4(summarySimilarity),
-          keyword_score: round4(keyword),
-          detail_similarity: round4(detailSimilarity),
-          raw_excerpt_similarity: round4(rawExcerptSimilarity),
-          importance_score: round4(importance),
-          recency_score: round4(recency),
-          path_project_score: round4(pathProject),
-          graph_score: round4(graphScore),
-          matched_terms: terms,
-          matched_trigger: terms.some((term) => tokenize(node.trigger).includes(term)),
-          matched_summary: terms.some((term) => tokenize(node.summary).includes(term)),
-          project_boost: pathProject > 0.5,
-          linked_node_ids: nodeLinks.map((link) => link.other_node_id),
-          explanation: explainRecall(node, {
-            matchedTerms: terms,
-            triggerSimilarity,
-            summarySimilarity,
-            keyword,
-            importance,
-            pathProject,
-            graphScore,
-            mode: plan.mode
-          })
-        };
+          strategy.path_project_weight * pathProject;
 
         return {
           node,
-          score,
-          why,
+          triggerSimilarity,
+          summarySimilarity,
+          detailSimilarity,
+          rawExcerptSimilarity,
+          keyword,
+          bm25,
+          lexical,
+          importance,
+          recency,
+          pathProject,
+          directGraphScore,
+          preliminaryScore: preliminaryScore * trustScoreMultiplier(node),
           links: nodeLinks
         };
       })
     );
+    const ranking = (select: (entry: (typeof preliminary)[number]) => number): RankedItem[] =>
+      preliminary.map((entry) => ({ id: entry.node.id, score: select(entry) }));
+    const rrfById = reciprocalRankFusion([
+      { items: ranking((entry) => entry.triggerSimilarity), weight: plan.retrieval_strategy.trigger_weight },
+      { items: ranking((entry) => entry.summarySimilarity), weight: plan.retrieval_strategy.summary_weight },
+      { items: ranking((entry) => entry.bm25), weight: plan.retrieval_strategy.keyword_weight },
+      { items: ranking((entry) => entry.detailSimilarity), weight: plan.retrieval_strategy.detail_weight },
+      { items: ranking((entry) => entry.rawExcerptSimilarity), weight: plan.retrieval_strategy.detail_weight * 0.5 },
+      { items: ranking((entry) => entry.importance), weight: plan.retrieval_strategy.importance_weight },
+      { items: ranking((entry) => entry.pathProject), weight: plan.retrieval_strategy.path_project_weight }
+    ]);
+    const linksByNodeId = new Map(preliminary.map((entry) => [entry.node.id, entry.links]));
+    const graphExpansionById = this.graphExpansionScores(
+      preliminary.map((entry) => ({
+        nodeId: entry.node.id,
+        score: entry.preliminaryScore
+      })),
+      linksByNodeId
+    );
+    const scored = preliminary.map((entry) => {
+      const graphExpansion = graphExpansionById.get(entry.node.id) ?? 0;
+      const graphScore = Math.max(entry.directGraphScore, graphExpansion);
+      const strategy = plan.retrieval_strategy;
+      const weightedScore =
+        strategy.trigger_weight * entry.triggerSimilarity +
+        strategy.summary_weight * entry.summarySimilarity +
+        strategy.keyword_weight * entry.lexical +
+        strategy.detail_weight * Math.max(entry.detailSimilarity, entry.rawExcerptSimilarity * 0.75) +
+        strategy.importance_weight * entry.importance +
+        strategy.recency_weight * entry.recency +
+        strategy.path_project_weight * entry.pathProject +
+        strategy.graph_weight * graphScore;
+      const rrfScore = rrfById.get(entry.node.id) ?? 0;
+      const score = (weightedScore * 0.78 + rrfScore * 0.22) * trustScoreMultiplier(entry.node);
+      const terms = matchedTerms(
+        queryText,
+        `${entry.node.summary} ${entry.node.trigger} ${entry.node.detail ?? ""} ${entry.node.tags.join(" ")} ${entry.node.source_path}`
+      );
+      const why: WhyRecalled = {
+        trigger_similarity: round4(entry.triggerSimilarity),
+        summary_similarity: round4(entry.summarySimilarity),
+        keyword_score: round4(entry.lexical),
+        bm25_score: round4(entry.bm25),
+        rrf_score: round4(rrfScore),
+        detail_similarity: round4(entry.detailSimilarity),
+        raw_excerpt_similarity: round4(entry.rawExcerptSimilarity),
+        importance_score: round4(entry.importance),
+        recency_score: round4(entry.recency),
+        path_project_score: round4(entry.pathProject),
+        graph_score: round4(graphScore),
+        graph_expansion_score: round4(graphExpansion),
+        matched_terms: terms,
+        matched_trigger: terms.some((term) => tokenize(entry.node.trigger).includes(term)),
+        matched_summary: terms.some((term) => tokenize(entry.node.summary).includes(term)),
+        project_boost: entry.pathProject > 0.5,
+        linked_node_ids: entry.links.map((link) => link.other_node_id),
+        explanation: explainRecall(entry.node, {
+          matchedTerms: terms,
+          triggerSimilarity: entry.triggerSimilarity,
+          summarySimilarity: entry.summarySimilarity,
+          keyword: entry.lexical,
+          importance: entry.importance,
+          pathProject: entry.pathProject,
+          graphScore,
+          mode: plan.mode
+        })
+      };
+
+      return {
+        node: entry.node,
+        score,
+        why,
+        links: entry.links
+      };
+    });
 
     const results: RecallResult[] = [];
     for (const entry of scored.sort((left, right) => right.score - left.score).slice(0, limit)) {
@@ -2984,6 +3061,41 @@ export class MemoryFS {
     return strongest;
   }
 
+  private graphExpansionScores(
+    seedScores: Array<{ nodeId: string; score: number }>,
+    linksByNodeId: Map<string, MemoryLinkPacket[]>
+  ): Map<string, number> {
+    const boosts = new Map<string, number>();
+    const seeds = [...seedScores]
+      .filter((seed) => seed.score > 0)
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 16);
+
+    for (const seed of seeds) {
+      const firstHopLinks = linksByNodeId.get(seed.nodeId) ?? [];
+      for (const firstHop of firstHopLinks) {
+        const firstWeight = relationExpansionWeight(firstHop.relation_type);
+        const firstBoost = seed.score * firstWeight * firstHop.confidence;
+        boosts.set(firstHop.other_node_id, Math.max(boosts.get(firstHop.other_node_id) ?? 0, firstBoost));
+
+        const secondHopLinks = linksByNodeId.get(firstHop.other_node_id) ?? [];
+        for (const secondHop of secondHopLinks) {
+          if (secondHop.other_node_id === seed.nodeId || secondHop.other_node_id === firstHop.other_node_id) continue;
+          const secondWeight = relationExpansionWeight(secondHop.relation_type);
+          const secondBoost = seed.score * firstWeight * secondWeight * firstHop.confidence * secondHop.confidence * 0.45;
+          boosts.set(secondHop.other_node_id, Math.max(boosts.get(secondHop.other_node_id) ?? 0, secondBoost));
+        }
+      }
+    }
+
+    const max = Math.max(0, ...boosts.values());
+    if (max === 0) return boosts;
+    for (const [nodeId, score] of boosts) {
+      boosts.set(nodeId, Math.min(1, score / max));
+    }
+    return boosts;
+  }
+
   private insertRecallTrace(
     workspaceId: string,
     query: string,
@@ -4537,6 +4649,30 @@ function warningsForNode(links: MemoryLinkPacket[]): string[] {
   if (links.some((link) => link.relation_type === "supersedes")) warnings.push("Supersession link exists.");
   if (links.some((link) => link.relation_type === "duplicates")) warnings.push("Possible duplicate memory.");
   return warnings;
+}
+
+function relationExpansionWeight(relationType: MemoryRelationType): number {
+  switch (relationType) {
+    case "supports":
+      return 0.9;
+    case "derived_from":
+    case "promoted_from":
+    case "used_in_run":
+      return 0.82;
+    case "belongs_to_project":
+      return 0.78;
+    case "supersedes":
+      return 0.72;
+    case "duplicates":
+      return 0.65;
+    case "caused_by":
+      return 0.62;
+    case "contradicts":
+      return 0.48;
+    case "related_to":
+    default:
+      return 0.58;
+  }
 }
 
 function explainRecall(

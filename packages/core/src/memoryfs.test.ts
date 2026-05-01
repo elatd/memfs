@@ -213,7 +213,7 @@ describe("MemoryFS core", () => {
     expect(source.extracted_sources[0]?.extractor_name).toBe("markdown");
   });
 
-  it("handles unsupported uploaded file types without creating fake memory", async () => {
+  it("handles extraction failures without creating fake memory", async () => {
     const workspace = memoryfs.createWorkspace("demo");
 
     await memoryfs.uploadFile(workspace.id, "/uploads/report.pdf", Buffer.from("%PDF demo"), {
@@ -224,12 +224,17 @@ describe("MemoryFS core", () => {
 
     const file = memoryfs.listFiles(workspace.id).find((entry) => entry.path === "/uploads/report.pdf")!;
     const sources = memoryfs.listExtractedSources(workspace.id, file.id);
-    const metadata = JSON.parse(sources[0]!.metadata_json) as { unsupported?: boolean; reason?: string };
+    const metadata = JSON.parse(sources[0]!.metadata_json) as {
+      unsupported?: boolean;
+      extraction_failed?: boolean;
+      reason?: string;
+    };
     const auditEvents = memoryfs.listAuditEvents(workspace.id);
 
     expect(sources).toHaveLength(1);
     expect(metadata.unsupported).toBe(true);
-    expect(metadata.reason).toMatch(/PDF extraction is not enabled/);
+    expect(metadata.extraction_failed).toBe(true);
+    expect(metadata.reason).toMatch(/PDF extraction failed/);
     expect(memoryfs.listMemoryNodes(workspace.id)).toHaveLength(0);
     expect(auditEvents.some((event) => event.event_type === "file_extraction_unsupported")).toBe(true);
   });
@@ -288,6 +293,8 @@ describe("MemoryFS core", () => {
     expect(recall.plan?.mode).toBe("general");
     expect(recall.trace_id).toBeTruthy();
     expect(recall.results[0]?.why?.trigger_similarity).toBeTypeOf("number");
+    expect(recall.results[0]?.why?.bm25_score).toBeTypeOf("number");
+    expect(recall.results[0]?.why?.rrf_score).toBeTypeOf("number");
     expect(recall.results[0]?.why?.explanation).toContain("This was recalled because");
   });
 

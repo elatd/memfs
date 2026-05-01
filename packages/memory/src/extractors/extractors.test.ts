@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
+import JSZip from "jszip";
+import { PDFDocument, StandardFonts } from "pdf-lib";
 import {
   codeExtractor,
   csvExtractor,
+  docxExtractor,
   extractDocument,
   htmlExtractor,
   jsonExtractor,
   markdownExtractor,
+  pdfExtractor,
   terminalLogExtractor,
   textExtractor
 } from "./index.js";
@@ -97,15 +101,96 @@ describe("file extractors", () => {
     expect(document.sections.some((section) => section.id.startsWith("terminal-failure"))).toBe(true);
   });
 
-  it("handles unsupported files honestly", async () => {
-    const { document, extractor } = await extractDocument({
+  it("extracts PDF text with page source locations", async () => {
+    const document = await pdfExtractor.extract({
       path: "/report.pdf",
       mimeType: "application/pdf",
+      bytes: await createPdfBuffer("Decision: PDF onboarding should preserve page references.")
+    });
+
+    expect(document.metadata).toMatchObject({ type: "pdf", page_count: 1 });
+    expect(document.text).toContain("PDF onboarding");
+    expect(document.sections[0]?.sourceLocation).toMatchObject({
+      type: "pdf",
+      page: 1
+    });
+  });
+
+  it("extracts DOCX text with paragraph source locations", async () => {
+    const document = await docxExtractor.extract({
+      path: "/report.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      bytes: await createDocxBuffer("Decision: DOCX onboarding notes should be source grounded.")
+    });
+
+    expect(document.metadata).toMatchObject({ type: "docx" });
+    expect(document.text).toContain("DOCX onboarding");
+    expect(document.sections[0]?.sourceLocation).toMatchObject({
+      type: "docx",
+      paragraph_index: 1
+    });
+  });
+
+  it("handles unsupported files honestly", async () => {
+    const { document, extractor } = await extractDocument({
+      path: "/archive.bin",
+      mimeType: "application/octet-stream",
       bytes: new Uint8Array([1, 2, 3])
     });
 
-    expect(extractor.name).toBe("pdf");
+    expect(extractor.name).toBe("unsupported");
     expect(document.metadata.unsupported).toBe(true);
     expect(document.sections).toHaveLength(0);
   });
 });
+
+async function createPdfBuffer(text: string): Promise<Buffer> {
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([612, 792]);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  page.drawText(text, {
+    x: 72,
+    y: 720,
+    size: 18,
+    font
+  });
+  return Buffer.from(await pdf.save());
+}
+
+async function createDocxBuffer(text: string): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file(
+    "[Content_Types].xml",
+    `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`
+  );
+  zip.folder("_rels")?.file(
+    ".rels",
+    `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`
+  );
+  zip.folder("word")?.file(
+    "document.xml",
+    `<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>${escapeXml(text)}</w:t></w:r></w:p>
+  </w:body>
+</w:document>`
+  );
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
