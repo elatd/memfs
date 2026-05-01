@@ -6,6 +6,8 @@ Raw files are always the source of truth. Memory nodes are retrieval indexes wit
 
 MemFS includes a trust layer for long-lived memory: scratch and run memory can be written freely, durable memory flows through reviewable promotions, snapshots can be diffed and rolled back, and health reports make memory drift visible.
 
+MemFS separates task execution from durable memory writing. Agents may propose memories freely, but MemFS validates, deduplicates, reviews, promotes, searches, and audits them through a memory curation pipeline. See [Memory Curation](./docs/memory-curation.md).
+
 Task workflows are built in: pre-task briefs, run folders, memory-used logs, compile-run candidate memories, handoff summaries, and stale memory review help agents carry context across sessions.
 
 MemFS can ingest common local files while preserving source references. Markdown, text, JSON, CSV, HTML, PDF, DOCX, code, and terminal logs are extracted into derived text with source locations; images still fail gracefully unless OCR/caption extraction is configured later.
