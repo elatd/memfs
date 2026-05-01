@@ -565,7 +565,13 @@ async function requestLocalOnnxEmbedding(text: string, options: MemoryModelOptio
   const model = options.localEmbedModel ?? process.env.MEMORYFS_LOCAL_EMBED_MODEL ?? "Xenova/all-MiniLM-L6-v2";
   let pipelinePromise = localEmbeddingPipelines.get(model);
   if (!pipelinePromise) {
-    pipelinePromise = createLocalEmbeddingPipeline(model);
+    const nextPipelinePromise = createLocalEmbeddingPipeline(model).catch((error) => {
+      if (localEmbeddingPipelines.get(model) === nextPipelinePromise) {
+        localEmbeddingPipelines.delete(model);
+      }
+      throw error;
+    });
+    pipelinePromise = nextPipelinePromise;
     localEmbeddingPipelines.set(model, pipelinePromise);
   }
   const extractor = await pipelinePromise;
