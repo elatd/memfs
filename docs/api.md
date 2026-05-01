@@ -2,6 +2,42 @@
 
 Base URL: `http://localhost:3131`
 
+## SDK
+
+`@memoryfs/sdk` exposes two layers:
+
+- `MemoryFSClient`: low-level HTTP methods that map closely to API routes.
+- `MemFSClient`: a small high-level client for application and agent integrations.
+
+```ts
+import { MemFSClient } from "@memoryfs/sdk";
+
+const memfs = new MemFSClient({ apiUrl: "http://localhost:3131" });
+
+await memfs.remember({
+  workspace: "doozy",
+  text: "The user prefers Netlify Functions for backend MVPs.",
+  scope: "workspace",
+  source: "explicit_user_instruction"
+});
+
+const results = await memfs.recall({
+  workspace: "doozy",
+  query: "backend preference"
+});
+```
+
+High-level methods accept a workspace name or id and resolve it through the API. Missing workspaces are created by default unless `createWorkspaceIfMissing=false` is passed to the client.
+
+`remember()` writes a source-backed candidate by default and does not silently bypass durable-memory review. If a caller passes `approved: true`, the SDK still goes through candidate approval and promotion APIs, so protected-path rules, audit events, snapshots, and source references remain part of the flow.
+
+High-level groups:
+
+- `remember`, `recall`, `search`, `grep`, `write`, `read`
+- `candidates.list`, `candidates.approve`, `candidates.reject`
+- `runs.start`, `runs.append`, `runs.finish`, `runs.compile`
+- `briefs.create`
+
 ## Workspaces
 
 - `POST /workspaces` with `{ "name": "demo" }`
@@ -71,6 +107,9 @@ Upload body:
 - `GET /workspaces/:id/memory/nodes/:node_id`
 - `GET /workspaces/:id/memory/nodes/:node_id/raw`
 - `GET /workspaces/:id/memory/nodes/:node_id/source`
+- `POST /workspaces/:id/memory/nodes/:node_id/mark-stale`
+- `POST /workspaces/:id/memory/nodes/:node_id/confirm`
+- `POST /workspaces/:id/memory/nodes/:old_node_id/supersede/:new_node_id`
 
 Recall body:
 
@@ -87,13 +126,16 @@ Recall body:
   "include_why": true,
   "include_contradictions": true,
   "include_links": true,
+  "include_related": true,
   "include_trust": true,
-  "include_rejected": false
+  "include_rejected": false,
+  "include_stale": false
 }
 ```
 
 Recall results always include `source_path` and `raw_ref`. Raw content appears only when `include_raw=true`.
 When available, results also include `source_location`, `source_kind`, and `extractor_name`.
+Normal recall excludes stale, conflicted, and superseded memory. Set `include_stale=true` for audit/review queries.
 
 `/memory/search` and `/memory/recall` remain POST-compatible for CLI, dashboard, virtual bash, and MCP. Search is intended for hybrid grep-style workflows; recall is intended for trigger-first progressive memory retrieval.
 
@@ -132,12 +174,18 @@ Additional endpoints:
 
 - `GET /workspaces/:id/memory/nodes/:node_id/links`
 - `POST /workspaces/:id/memory/nodes/:node_id/links`
+- `GET /workspaces/:id/memory/graph/nodes/:node_id`
+- `GET /workspaces/:id/memory/graph/nodes/:node_id/related?depth=2&limit=12`
+- `GET /workspaces/:id/memory/graph/path?from_node_id=...&to_node_id=...`
+- `POST /workspaces/:id/memory/graph/links`
+- `DELETE /workspaces/:id/memory/graph/links/:edge_id`
 - `GET /workspaces/:id/memory/contradictions`
 - `POST /workspaces/:id/memory/explain-recall`
 - `POST /workspaces/:id/brief`
 - `POST /workspaces/:id/runs`
 - `GET /workspaces/:id/runs`
 - `GET /workspaces/:id/runs/:run_id`
+- `POST /workspaces/:id/runs/:run_id/start`
 - `POST /workspaces/:id/runs/:run_id/events`
 - `POST /workspaces/:id/runs/:run_id/complete`
 - `POST /workspaces/:id/runs/:run_id/compile`
@@ -166,6 +214,34 @@ Create link body:
   "actor": "human:web"
 }
 ```
+
+Create graph edge body:
+
+```json
+{
+  "from_node_id": "node-a",
+  "to_node_id": "node-b",
+  "relation_type": "supports",
+  "confidence": 0.9,
+  "reason": "The first memory supports the second.",
+  "actor": "human:web"
+}
+```
+
+For source files and runs, use typed endpoints:
+
+```json
+{
+  "from_type": "reasoning_memory",
+  "from_id": "node-id",
+  "to_type": "run",
+  "to_id": "run-id",
+  "relation_type": "observed_in",
+  "source_ref": "memoryfs://workspace/runs/run-id/reasoning-memories.json#sha"
+}
+```
+
+Recall results include `links` and `graph_edges` when `include_links=true`.
 
 Brief body:
 

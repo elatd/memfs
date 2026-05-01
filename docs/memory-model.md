@@ -27,12 +27,15 @@ A retrieval object derived from a file or event:
 - `raw_excerpt`: short exact excerpt.
 - `source_location_json`: optional location inside the source, such as a Markdown heading, CSV row range, code line range, or terminal log line range.
 - `tags`: lowercase retrieval hints.
-- `memory_type`: preference, decision, constraint, fact, task, error, research finding, unresolved question, run summary, or other.
+- `memory_type`: preference, decision, constraint, fact, task, error, research finding, unresolved question, run summary, reasoning memory, or other.
 - `importance`: 1 to 5.
 - `confidence`: 0 to 1.
 - `trust_level`: ephemeral, agent generated, source backed, reviewed, trusted, superseded, or rejected.
-- `status`: active, pending, or rejected.
+- `status`: active/approved durable memory, reviewable candidates, or lifecycle states such as observed, rejected, superseded, stale, and conflicted.
 - `ttl_expires_at`: optional expiry for low-trust scratch memory.
+- temporal fields: `valid_from`, `valid_until`, `last_confirmed_at`, `last_used_at`, `stale_reason`, `supersedes`, and `superseded_by`.
+- `scope`: global, workspace, project, repo, session, agent, contact, or run.
+- optional scope identifiers: `project_slug`, `repo_path`, `session_id`, `agent_id`, `contact_id`, and `run_id`.
 
 Trust defaults come from source paths:
 
@@ -41,6 +44,16 @@ Trust defaults come from source paths:
 - normal memory paths: source backed.
 - reviewed promotions: reviewed or trusted.
 - superseded and rejected memories remain stored for auditability.
+
+Scope defaults also come from source paths:
+
+- `/profile.md`, `/preferences.md`, `/archive/...`, and ordinary memory files: `workspace`.
+- `/projects/<slug>/...`: `project` with `project_slug=<slug>`.
+- `/runs/<id>/...`: `run` with `run_id=<id>`.
+- `/repos/<path>/...`: `repo` with `repo_path=<path>`.
+- `/sessions/<id>/...`, `/agents/<id>/...`, and `/contacts/<id>/...`: session, agent, and contact scopes.
+
+Recall, memory grep, node listing, and MCP tools can filter by scope and identifiers without changing existing unscoped behavior.
 
 ## Progressive Recall
 
@@ -81,7 +94,7 @@ Recall returns typed memory packets:
 
 Raw source content is included only when `include_raw=true`.
 
-Normal recall excludes rejected and pending nodes. Rejected nodes require `include_rejected=true`; trust fields require `include_trust=true`.
+Normal recall excludes rejected, pending/candidate-like, stale, conflicted, and superseded nodes. Rejected nodes require `include_rejected=true`; stale/superseded audit queries require `include_stale=true`; trust and temporal fields require `include_trust=true`.
 
 ## Agent Runs
 

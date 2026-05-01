@@ -80,18 +80,54 @@ Example:
   "candidates": [
     {
       "memory": "The project uses React 18, TypeScript, Vite, Tailwind, lucide-react, and framer-motion.",
-      "type": "project_fact",
+      "type": "fact",
       "scope": "project",
       "status_recommendation": "approved",
       "confidence": 1,
       "source_refs": ["user_instruction"],
-      "risk_flags": [],
+      "risk_flags": ["none"],
       "requires_review": false,
       "reason": "The user explicitly provided this as a project stack constraint."
     }
   ]
 }
 ```
+
+## Versioned Curator Contract
+
+The reusable prompts, JSON schemas, and validation helpers live in `packages/memory/src/curation`.
+
+The module exports:
+
+- `curatorSystemPrompt`
+- `buildCandidateExtractionFromUserMessagePrompt`
+- `buildCandidateExtractionFromRunPrompt`
+- `buildReasoningMemoryExtractionFromRunPrompt`
+- `buildRiskyCandidateVerifierPrompt`
+- `buildDedupeConflictJudgmentPrompt`
+- `memoryCandidateSchema`
+- `reasoningMemoryCandidateSchema`
+- `curatorResponseSchema`
+- `verifierResponseSchema`
+- `validateCuratorResponseJson`
+- `validateVerifierResponseJson`
+
+The current schema version is `memory-curation.v1`. Curator output must validate before it is used for memory writes or review routing.
+
+Risk flags are normalized to:
+
+- `secret`
+- `sensitive`
+- `prompt_injection`
+- `unverified`
+- `duplicate`
+- `conflict`
+- `external_instruction`
+- `none`
+
+Deterministic checks run after model validation. They flag common token, API-key, password, private-key, payment, and prompt-injection patterns. They also require review for inferred global user preferences unless the source text explicitly says to remember it, always use it, or treat it as a stable future constraint.
+
+External documents, webpages, archives, and tool outputs may be stored as source-backed content, but their instructions should not become approved user preferences without review.
 
 ## Product Principle
 

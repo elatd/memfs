@@ -26,9 +26,16 @@ cat ~/MemFS/demo/.memfs/recall.results.md
 
 echo "onboarding decision" > ~/MemFS/demo/.memfs/search.query
 cat ~/MemFS/demo/.memfs/search.results.md
+
+echo "Fix OAuth refresh token flow" > ~/MemFS/demo/.memfs/brief.query
+cat ~/MemFS/demo/.memfs/brief.results.md
 ```
 
-Each mount keeps its own latest `recall.results.md` and `search.results.md`; separate mounts do not share query state.
+Each mount keeps its own latest `recall.results.md`, `search.results.md`, and `brief.results.md`; separate mounts do not share query state.
+
+`search.query` uses MemFS hybrid grep. `recall.query` uses normal trusted recall behavior and excludes stale, rejected, and superseded memory by default. `brief.query` creates a pre-task context pack without raw source content.
+
+All three result files include source paths, trust levels, scores, memory node ids, raw refs, and a reminder that raw source must be opened explicitly.
 
 4. Promote durable memory through the normal review path instead of writing trusted files directly.
 
@@ -57,5 +64,6 @@ Mounted workflows emit mount-specific audit events where the configured API/core
 - `mount.protected_write.denied`
 - `mount.recall.query`
 - `mount.search.query`
+- `mount.brief.query`
 
 The underlying MemFS operation also emits its standard audit event, so a mounted write can show both `file_write` and `mount.file.write`.
