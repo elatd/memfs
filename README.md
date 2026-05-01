@@ -8,7 +8,7 @@ MemFS includes a trust layer for long-lived memory: scratch and run memory can b
 
 Task workflows are built in: pre-task briefs, run folders, memory-used logs, compile-run candidate memories, handoff summaries, and stale memory review help agents carry context across sessions.
 
-MemFS can ingest common local files while preserving source references. Markdown, text, JSON, CSV, HTML, code, and terminal logs are extracted into derived text with source locations; PDF, DOCX, and images fail gracefully unless an extractor is added.
+MemFS can ingest common local files while preserving source references. Markdown, text, JSON, CSV, HTML, PDF, DOCX, code, and terminal logs are extracted into derived text with source locations; images still fail gracefully unless OCR/caption extraction is configured later.
 
 Local SQLite mode is the default. Optional team and cloud foundations include storage adapters, Postgres metadata support, object blob storage, sync events, role-based permissions, conflict detection, and conflict resolution.
 
@@ -44,6 +44,11 @@ corepack prepare pnpm@9.15.4 --activate
 - `OPENAI_BASE_URL`: optional compatible API base URL.
 - `MEMORYFS_CHAT_MODEL`: defaults to `gpt-4o-mini`.
 - `MEMORYFS_EMBED_MODEL`: defaults to `text-embedding-3-small`.
+- `MEMORYFS_USE_LOCAL_EMBEDDINGS`: set to `0` to disable local ONNX embeddings; enabled by default outside tests when no API key is used.
+- `MEMORYFS_LOCAL_EMBED_MODEL`: defaults to `Xenova/all-MiniLM-L6-v2`.
+- `MEMORYFS_LOCAL_EMBED_LOCAL_ONLY`: set to `1` to require an already cached local embedding model.
+- `MEMORYFS_MODEL_CACHE_DIR`: optional cache directory for local ONNX models.
+- `MEMORYFS_REQUIRE_LOCAL_EMBEDDINGS`: set to `1` to fail instead of using deterministic lexical fallback when local embeddings cannot load.
 - `MEMORYFS_MODEL_TIMEOUT_MS`: defaults to `20000`.
 - `MEMORYFS_DEMO_USE_LLM`: set to `true` if the demo seed should call the configured model.
 - `MEMORYFS_DATA_DIR`: defaults to `./data`.
@@ -57,7 +62,7 @@ corepack prepare pnpm@9.15.4 --activate
 - `MEMFS_AUTH_REQUIRED`: require actor auth for API requests.
 - `MEMFS_ENCRYPTION_KEY`: reserved for encrypted cloud deployments.
 
-Without an API key, MemFS uses deterministic local extraction and hash embeddings so local operation still works. The demo seed uses the deterministic path by default.
+Without an API key, MemFS uses deterministic local extraction and local ONNX embeddings. The default local model is downloaded on first use and cached; if local embeddings are disabled or unavailable, MemFS falls back to a deterministic lexical embedding so local operation still works.
 
 ## Run
 

@@ -25,7 +25,7 @@ A retrieval object derived from a file or event:
 - `detail`: richer context, loaded only when needed.
 - `raw_ref`: pointer back to the source.
 - `raw_excerpt`: short exact excerpt.
-- `source_location_json`: optional location inside the source, such as a Markdown heading, CSV row range, code line range, or terminal log line range.
+- `source_location_json`: optional location inside the source, such as a Markdown heading, PDF page, DOCX paragraph, CSV row range, code line range, or terminal log line range.
 - `tags`: lowercase retrieval hints.
 - `memory_type`: preference, decision, constraint, fact, task, error, research finding, unresolved question, run summary, or other.
 - `importance`: 1 to 5.

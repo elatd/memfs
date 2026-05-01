@@ -9,10 +9,12 @@ Supported clean-room extractors in this phase:
 - JSON: flattened JSON paths.
 - CSV: header summaries and row ranges.
 - HTML: script/style stripping, title, headings, and links.
+- PDF: text extraction with page source locations.
+- DOCX: raw text extraction with paragraph source locations.
 - Code: simple symbol chunks or line chunks with line ranges.
 - Terminal logs: command sections, failure snippets, and log line ranges.
 
-PDF, DOCX, and image files are recognized but marked unsupported in the MVP unless a practical extractor is added. Unsupported files produce an `extracted_sources` record with `metadata.unsupported=true` and create no memory nodes.
+Image files are recognized but marked unsupported until OCR or caption extraction is added. Corrupt or encrypted PDF/DOCX files fail honestly with `metadata.unsupported=true` and `metadata.extraction_failed=true`; they create no memory nodes.
 
 API workflow:
 
