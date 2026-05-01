@@ -346,6 +346,13 @@ export class MemoryFSClient {
     return this.request(`/workspaces/${workspaceId}/audit-events?limit=${limit}`);
   }
 
+  recordAuditEvent(workspaceId: string, body: { actor?: string; event_type: string; payload?: unknown }): Promise<unknown> {
+    return this.request(`/workspaces/${workspaceId}/audit-events`, {
+      method: "POST",
+      body
+    });
+  }
+
   syncStatus(workspaceId: string): Promise<unknown> {
     return this.request(`/workspaces/${workspaceId}/sync/status`);
   }

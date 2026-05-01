@@ -1,0 +1,23 @@
+{
+  "name": "@memoryfs/mountd",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "memfs-mountd": "./bin/memfs-mountd.js"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@memoryfs/mount-core": "workspace:*",
+    "@memoryfs/sdk": "workspace:*",
+    "tsx": "^4.19.2"
+  },
+  "optionalDependencies": {
+    "fuse-native": "^2.2.6"
+  }
+}

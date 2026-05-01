@@ -8,6 +8,23 @@ Base URL: `http://localhost:3131`
 - `GET /workspaces`
 - `GET /workspaces/:id`
 
+## Audit
+
+- `GET /workspaces/:id/audit-events?limit=100`
+- `POST /workspaces/:id/audit-events`
+
+Record audit body:
+
+```json
+{
+  "actor": "mount:local",
+  "event_type": "mount.started",
+  "payload": {
+    "mountpoint": "/Users/me/MemFS/demo"
+  }
+}
+```
+
 ## Files
 
 - `GET /workspaces/:id/files`

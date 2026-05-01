@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { MemoryFSClient } from "@memoryfs/sdk";
+import { listMountRegistry, runMountd, unmountMount, type MountRegistryEntry } from "@memoryfs/mountd";
+import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -282,6 +284,10 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
         return await syncCommand(client, env, io, parsed, subcommand, rest);
       case "team":
         return await teamCommand(client, env, io, parsed, subcommand, rest);
+      case "mount":
+        return await mountCommand(env, io, parsed, subcommand, rest);
+      case "unmount":
+        return await unmountCommand(env, io, parsed, required(subcommand, "memfs unmount requires a mountpoint."));
       default:
         throw new Error(`Unknown command: ${root}\n\n${helpText()}`);
     }
@@ -294,6 +300,60 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
     }
     return 1;
   }
+}
+
+async function mountCommand(
+  env: NodeJS.ProcessEnv,
+  io: CliIo,
+  parsed: ParsedArgs,
+  subcommand: string | undefined,
+  rest: string[]
+): Promise<number> {
+  if (subcommand === "status") {
+    const entries = await listMountRegistry(env);
+    output(io, parsed, formatMountStatus(entries), entries);
+    return 0;
+  }
+
+  const workspace = required(subcommand, "memfs mount requires a workspace name or id.");
+  const mountpoint = required(rest[0], "memfs mount requires a mountpoint.");
+  const mountArgs = [workspace, mountpoint, ...rest.slice(1)];
+  if (parsed.allowProtected && !mountArgs.includes("--allow-protected-write")) {
+    mountArgs.push("--allow-protected-write");
+  }
+  if (!mountArgs.includes("--api-url")) {
+    mountArgs.push("--api-url", env.MEMFS_API_URL ?? defaultApiUrl);
+  }
+
+  if (mountArgs.includes("--daemon")) {
+    const entry = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../mountd/src/index.ts");
+    const child = spawn("tsx", [entry, ...mountArgs], {
+      detached: true,
+      stdio: "ignore",
+      env
+    });
+    child.unref();
+    output(io, parsed, `Mount daemon starting for ${workspace} at ${mountpoint}`, {
+      workspace,
+      mountpoint,
+      pid: child.pid ?? null
+    });
+    return 0;
+  }
+
+  await runMountd(mountArgs, env);
+  return 0;
+}
+
+async function unmountCommand(
+  env: NodeJS.ProcessEnv,
+  io: CliIo,
+  parsed: ParsedArgs,
+  mountpoint: string
+): Promise<number> {
+  const result = await unmountMount(mountpoint, env);
+  output(io, parsed, result.message, result);
+  return result.ok ? 0 : 1;
 }
 
 async function briefCommand(
@@ -358,7 +418,19 @@ async function runCommand(
     });
   }
 
-  throw new Error("Usage: memfs run create <task> | memfs run complete <run_id> | memfs run compile <run_id> | memfs run show <run_id>");
+  if (subcommand === "path") {
+    const runId = required(rest[0], "memfs run path requires a run id.");
+    output(io, parsed, `/runs/${runId}`, { path: `/runs/${runId}` });
+    return 0;
+  }
+
+  if (subcommand === "today") {
+    const date = new Date().toISOString().slice(0, 10);
+    output(io, parsed, `/runs/${date}`, { path: `/runs/${date}` });
+    return 0;
+  }
+
+  throw new Error("Usage: memfs run create <task> | memfs run complete <run_id> | memfs run compile <run_id> | memfs run show <run_id> | memfs run path <run_id> | memfs run today");
 }
 
 async function runsCommand(
@@ -1021,6 +1093,19 @@ function formatTeamMember(member: TeamMember): string {
   return `${member.handle} ${member.role}${member.display_name ? ` (${member.display_name})` : ""}`;
 }
 
+function formatMountStatus(entries: MountRegistryEntry[]): string {
+  return entries
+    .map(
+      (entry) =>
+        `${entry.mountpoint} ${entry.mode} ${entry.workspaceName ?? entry.workspaceId}\n` +
+        `  pid: ${entry.pid}\n` +
+        `  actor: ${entry.actor}\n` +
+        `  api: ${entry.apiUrl}\n` +
+        `  started: ${entry.startedAt}`
+    )
+    .join("\n\n") || "(no active MemFS mounts)";
+}
+
 function formatExtractedSource(source: ExtractedSource): string {
   const metadata = JSON.parse(source.metadata_json) as {
     unsupported?: boolean;
@@ -1185,8 +1270,13 @@ function helpText(): string {
   memfs run compile <run_id>
   memfs runs
   memfs run show <run_id>
+  memfs run path <run_id>
+  memfs run today
   memfs handoff --project <name>
   memfs stale
+  memfs mount <workspace> <mountpoint> [--read-only|--read-write]
+  memfs mount status
+  memfs unmount <mountpoint>
   memfs sync status
   memfs sync pull
   memfs sync push
@@ -1196,7 +1286,8 @@ function helpText(): string {
   memfs team invite <handle> --role viewer|agent|editor|admin|owner
   memfs team role set <handle> <role>
 
-Flags: --json, --no-ingest, --allow-protected, --dry-run`;
+Flags: --json, --no-ingest, --allow-protected, --dry-run
+Mount flags: --read-only, --read-write, --ingest-on-write, --allow-protected-write, --trust-level <level>, --default-run-folder <path>, --actor <actor>, --create-mountpoint, --allow-non-empty, --daemon`;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

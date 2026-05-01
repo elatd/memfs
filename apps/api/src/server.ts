@@ -524,6 +524,17 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     return memoryfs.listAuditEvents(id, Number(query.limit ?? 100));
   });
 
+  app.post("/workspaces/:id/audit-events", async (request) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { actor?: string; event_type?: string; payload?: unknown };
+    return memoryfs.recordAuditEvent(
+      id,
+      body.actor ?? actorFromRequest(request) ?? "agent:api",
+      body.event_type ?? "audit_event",
+      body.payload ?? {}
+    );
+  });
+
   return app;
 }
 

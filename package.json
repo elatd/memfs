@@ -13,7 +13,8 @@
     "test": "vitest run",
     "typecheck": "pnpm -r build",
     "build": "pnpm -r build",
-    "demo:seed": "tsx scripts/demo-seed.ts"
+    "demo:seed": "tsx scripts/demo-seed.ts",
+    "mount:smoke:readwrite": "tsx scripts/mount-smoke-readwrite.ts"
   },
   "pnpm": {
     "overrides": {

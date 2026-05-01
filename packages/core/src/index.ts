@@ -1171,6 +1171,11 @@ export class MemoryFS {
       .all(workspaceId, limit) as unknown as AuditEvent[];
   }
 
+  recordAuditEvent(workspaceId: string, actor: string, eventType: string, payload: unknown = {}): AuditEvent {
+    this.getWorkspace(workspaceId);
+    return this.audit(workspaceId, actor || "agent:unknown", eventType || "audit_event", payload);
+  }
+
   listProtectedPaths(workspaceId: string): Array<{ path_glob: string; rule_type: string }> {
     this.getWorkspace(workspaceId);
     return this.db
@@ -3447,24 +3452,33 @@ export class MemoryFS {
     }, input.actor, createdAt);
   }
 
-  private audit(workspaceId: string | null, actor: string, eventType: string, payload: unknown): void {
+  private audit(workspaceId: string | null, actor: string, eventType: string, payload: unknown): AuditEvent {
     const id = randomUUID();
     const createdAt = isoNow();
+    const payloadJson = JSON.stringify(payload);
     this.db
       .prepare(
         "INSERT INTO audit_events (id, workspace_id, actor, event_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)"
       )
-      .run(id, workspaceId, actor, eventType, JSON.stringify(payload), createdAt);
+      .run(id, workspaceId, actor, eventType, payloadJson, createdAt);
     if (workspaceId) {
       this.recordSyncEvent(workspaceId, "audit_events", id, "insert", {
         id,
         workspace_id: workspaceId,
         actor,
         event_type: eventType,
-        payload_json: JSON.stringify(payload),
+        payload_json: payloadJson,
         created_at: createdAt
       }, actor, createdAt);
     }
+    return {
+      id,
+      workspace_id: workspaceId,
+      actor,
+      event_type: eventType,
+      payload_json: payloadJson,
+      created_at: createdAt
+    };
   }
 
   private recordSyncEvent(

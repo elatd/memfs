@@ -156,6 +156,13 @@ describe("memfs CLI", () => {
     const role = await run("team", "role", "set", "agent:cli", "viewer");
     expect(role.stdout).toContain("agent:cli viewer");
   });
+
+  it("shows mount status when no mounts are active", async () => {
+    const status = await run("mount", "status");
+
+    expect(status.code).toBe(0);
+    expect(status.stdout).toContain("(no active MemFS mounts)");
+  });
 });
 
 async function run(...args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {

@@ -4,19 +4,21 @@ MemFS is a clean-room, local-first agent memory filesystem. Humans and agents wo
 
 Raw files are always the source of truth. Memory nodes are retrieval indexes with summaries, triggers, details, source references, tags, importance, confidence, and links.
 
-Phase 3 adds a trust layer for long-lived memory: scratch and run memory can be written freely, durable memory flows through reviewable promotions, snapshots can be diffed and rolled back, and health reports make memory drift visible.
+MemFS includes a trust layer for long-lived memory: scratch and run memory can be written freely, durable memory flows through reviewable promotions, snapshots can be diffed and rolled back, and health reports make memory drift visible.
 
-Phase 4 adds the task lifecycle: pre-task briefs, run folders, memory-used logs, compile-run candidate memories, handoff summaries, and stale memory review.
+Task workflows are built in: pre-task briefs, run folders, memory-used logs, compile-run candidate memories, handoff summaries, and stale memory review help agents carry context across sessions.
 
-Phase 5 adds multimodal ingestion for common local files. Markdown, text, JSON, CSV, HTML, code, and terminal logs are extracted into derived text with source locations; PDF, DOCX, and images fail gracefully unless an extractor is added.
+MemFS can ingest common local files while preserving source references. Markdown, text, JSON, CSV, HTML, code, and terminal logs are extracted into derived text with source locations; PDF, DOCX, and images fail gracefully unless an extractor is added.
 
-Phase 6 adds optional team and cloud foundations: storage adapters, Postgres metadata support, object blob storage, sync events, role-based permissions, conflict detection, and conflict resolution. Local SQLite mode remains the default.
+Local SQLite mode is the default. Optional team and cloud foundations include storage adapters, Postgres metadata support, object blob storage, sync events, role-based permissions, conflict detection, and conflict resolution.
+
+A MemFS workspace can also be browsed as a mounted filesystem. Mounts are read-only by default and read-write only when requested; writes still go through MemFS core/API so protected path checks, ingestion flags, and audit events remain intact.
 
 ## Clean-Room Note
 
 MemFS is a new implementation based on the requirements in this repository. It is designed around ordinary files, local metadata, source-backed memory nodes, and progressive recall.
 
-The MVP intentionally avoids FUSE, Git compatibility, and graph databases. It uses a TypeScript monorepo, Fastify, SQLite metadata, local disk blobs, a Vite dashboard, an MCP server, a small virtual shell, and an SDK.
+It uses a TypeScript monorepo, Fastify, SQLite metadata, local disk blobs, a Vite dashboard, an MCP server, a small virtual shell, an SDK, and an optional FUSE-backed mount daemon.
 
 ## Permissive Usage
 
@@ -45,7 +47,7 @@ corepack prepare pnpm@9.15.4 --activate
 - `MEMORYFS_MODEL_TIMEOUT_MS`: defaults to `20000`.
 - `MEMORYFS_DEMO_USE_LLM`: set to `true` if the demo seed should call the configured model.
 - `MEMORYFS_DATA_DIR`: defaults to `./data`.
-- `MEMFS_DATA_DIR`: preferred Phase 6 data directory name; falls back to `MEMORYFS_DATA_DIR`.
+- `MEMFS_DATA_DIR`: preferred data directory name; falls back to `MEMORYFS_DATA_DIR`.
 - `MEMORYFS_API_PORT`: defaults to `3131`.
 - `VITE_API_BASE_URL`: defaults to `http://localhost:3131`.
 - `MEMFS_MODE`: `local`, `team`, or `cloud`; defaults to `local`.
@@ -85,6 +87,18 @@ pnpm exec memfs workspace list
 ```
 
 The command name is `memfs`. It talks to `http://localhost:3131` by default and accepts `MEMFS_API_URL`.
+
+Mount a workspace:
+
+```bash
+mkdir -p ~/MemFS/demo
+pnpm exec memfs mount demo ~/MemFS/demo --read-only
+pnpm exec memfs mount demo ~/MemFS/demo --read-write --ingest-on-write
+pnpm exec memfs mount status
+pnpm exec memfs unmount ~/MemFS/demo
+```
+
+Read-write mounts are explicit. Protected writes fail unless `--allow-protected-write` is passed, and denied protected writes are audited.
 
 Run the MCP server:
 
@@ -129,6 +143,9 @@ More docs:
 - [CLI](./docs/cli.md)
 - [Virtual Bash](./docs/virtual-bash.md)
 - [MCP](./docs/mcp.md)
+- [Mount](./docs/mount.md)
+- [Mounted Agent Workflow](./docs/mounted-agent-workflow.md)
+- [Audit Events](./docs/audit.md)
 - [Explainable Recall](./docs/explainable-recall.md)
 - [Memory Graph](./docs/memory-graph.md)
 - [Trust Layer](./docs/trust-layer.md)
