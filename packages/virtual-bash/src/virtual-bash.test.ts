@@ -55,6 +55,72 @@ describe("virtual bash", () => {
     expect(recall.displayText).toContain("source: /runs/demo/result.md");
   });
 
+  it("denies protected write append and delete by default and audits denials", async () => {
+    const shell = createMemoryFsShell({ memoryfs, workspaceId });
+    await memoryfs.writeFile(workspaceId, "/preferences.md", "Protected seed", {
+      actor: "test",
+      ingest: false,
+      allow_protected_write: true
+    });
+
+    await expect(shell.exec('write /preferences.md "should fail"')).rejects.toThrow(/Protected path/);
+    await expect(shell.exec('append /preferences.md "should fail"')).rejects.toThrow(/Protected path/);
+    await expect(shell.exec("rm /preferences.md")).rejects.toThrow(/Protected path/);
+
+    const auditTypes = memoryfs.listAuditEvents(workspaceId).map((event) => event.event_type);
+    expect(auditTypes.filter((type) => type === "protected_write_denied").length).toBeGreaterThanOrEqual(2);
+    expect(auditTypes).toContain("protected_delete_denied");
+    expect((await memoryfs.readFile(workspaceId, "/preferences.md")).content).toBe("Protected seed");
+  });
+
+  it("allows protected writes only when shell construction opts in", async () => {
+    const shell = createMemoryFsShell({ memoryfs, workspaceId, allowProtectedWrite: true });
+
+    const write = await shell.exec('write /preferences.md "Allowed preference"');
+
+    expect(write.displayText).toContain("Wrote /preferences.md");
+    expect((await memoryfs.readFile(workspaceId, "/preferences.md")).content).toBe("Allowed preference");
+  });
+
+  it("executes brief run promote health and sync status commands", async () => {
+    const shell = createMemoryFsShell({ memoryfs, workspaceId });
+    await shell.exec('write /runs/demo/result.md "Decision: Keep onboarding simple."');
+
+    const brief = await shell.exec('brief "change onboarding"');
+    expect(brief.displayText).toContain("# Memory Brief");
+
+    const run = await shell.exec('run create "Change onboarding"');
+    expect(run.displayText).toContain("/runs/");
+    const runId = (run.data as { id: string }).id;
+
+    const runList = await shell.exec("run list");
+    expect(runList.displayText).toContain(runId);
+
+    const runShow = await shell.exec(`run show ${runId}`);
+    expect(runShow.displayText).toContain("Change onboarding");
+
+    const runPath = await shell.exec(`run path ${runId}`);
+    expect(runPath.displayText).toBe(`/runs/${runId}`);
+
+    const today = await shell.exec("run today");
+    expect(today.displayText).toMatch(/^\/runs\/\d{4}-\d{2}-\d{2}$/);
+
+    const completed = await shell.exec(`run complete ${runId} "Finished onboarding change."`);
+    expect(completed.displayText).toContain("completed");
+
+    const compiled = await shell.exec(`run compile ${runId}`);
+    expect(compiled.displayText).toContain("Compiled");
+
+    const promotion = await shell.exec('promote /runs/demo/result.md --to /memory/onboarding.md --reason "Durable onboarding note"');
+    expect(promotion.displayText).toContain("/runs/demo/result.md -> /memory/onboarding.md");
+
+    const health = await shell.exec("health");
+    expect(health.displayText).toContain("Memory health:");
+
+    const sync = await shell.exec("sync status");
+    expect(sync.displayText).toContain("Sync:");
+  });
+
   it("rejects unsupported commands", async () => {
     const shell = createMemoryFsShell({ memoryfs, workspaceId });
     await expect(shell.exec("pwd")).rejects.toThrow(/Unsupported/);

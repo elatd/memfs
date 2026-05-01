@@ -1,10 +1,21 @@
-import { MemoryFS, normalizeMemoryPath, type RecallResponse } from "@memoryfs/core";
+import {
+  MemoryFS,
+  normalizeMemoryPath,
+  type AgentRun,
+  type BriefResponse,
+  type CompileRunResponse,
+  type MemoryHealthReport,
+  type MemoryPromotion,
+  type RecallResponse,
+  type SyncStatus
+} from "@memoryfs/core";
 
 export interface MemoryFsShellOptions {
   memoryfs: MemoryFS;
   workspaceId: string;
   actor?: string;
   ingestWrites?: boolean;
+  allowProtectedWrite?: boolean;
 }
 
 export interface ShellExecResult<T = unknown> {
@@ -17,6 +28,7 @@ export interface ShellExecResult<T = unknown> {
 export interface VirtualBashOptions {
   actor?: string;
   ingestWrites?: boolean;
+  allowProtectedWrite?: boolean;
 }
 
 interface LiteralMatch {
@@ -56,10 +68,20 @@ export class MemoryFsShell {
         return this.sgrep(requiredArg(args[0], "sgrep requires a query."));
       case "recall":
         return this.recall(requiredArg(args[0], "recall requires a query."));
+      case "brief":
+        return this.brief(args.join(" "));
+      case "run":
+        return this.run(args);
       case "node":
         return this.node(args);
       case "raw":
         return this.raw(requiredArg(args[0], "raw requires a node id."));
+      case "promote":
+        return this.promote(args);
+      case "health":
+        return this.health();
+      case "sync":
+        return this.sync(args);
       case "status":
         return this.status();
       default:
@@ -91,7 +113,7 @@ export class MemoryFsShell {
     const file = await this.options.memoryfs.writeFile(this.options.workspaceId, normalizedPath, content, {
       actor: this.options.actor ?? "agent:virtual-bash",
       ingest: this.options.ingestWrites ?? true,
-      allow_protected_write: true
+      allow_protected_write: this.options.allowProtectedWrite ?? false
     });
     return result("write", file, `Wrote ${file.path}`);
   }
@@ -109,7 +131,7 @@ export class MemoryFsShell {
     const file = await this.options.memoryfs.writeFile(this.options.workspaceId, normalizedPath, next, {
       actor: this.options.actor ?? "agent:virtual-bash",
       ingest: this.options.ingestWrites ?? true,
-      allow_protected_write: true
+      allow_protected_write: this.options.allowProtectedWrite ?? false
     });
     return result("append", file, `Appended ${file.path}`);
   }
@@ -118,7 +140,7 @@ export class MemoryFsShell {
     const normalizedPath = normalizeMemoryPath(filePath);
     await this.options.memoryfs.deleteFile(this.options.workspaceId, normalizedPath, {
       actor: this.options.actor ?? "agent:virtual-bash",
-      allow_protected_write: true
+      allow_protected_write: this.options.allowProtectedWrite ?? false
     });
     return result("rm", { path: normalizedPath }, `Deleted ${normalizedPath}`);
   }
@@ -180,6 +202,69 @@ export class MemoryFsShell {
     );
   }
 
+  private async brief(task: string): Promise<ShellExecResult<BriefResponse>> {
+    const cleaned = requiredArg(task.trim(), "brief requires a task.");
+    const brief = await this.options.memoryfs.createBrief(this.options.workspaceId, {
+      task: cleaned,
+      actor: this.options.actor ?? "agent:virtual-bash",
+      mode: "task_preparation",
+      include_recent_runs: true,
+      include_open_questions: true,
+      include_contradictions: true
+    });
+    return result("brief", brief, brief.brief_markdown);
+  }
+
+  private async run(args: string[]): Promise<ShellExecResult> {
+    const subcommand = args[0];
+    const actor = this.options.actor ?? "agent:virtual-bash";
+
+    if (subcommand === "create") {
+      const task = requiredArg(args.slice(1).join(" ").trim(), "run create requires a task.");
+      const run = await this.options.memoryfs.createRun(this.options.workspaceId, { task, actor });
+      return result("run", run, formatRun(run));
+    }
+
+    if (subcommand === "complete") {
+      const runId = requiredArg(args[1], "run complete requires a run id.");
+      const resultText = args.slice(2).join(" ").trim();
+      const run = await this.options.memoryfs.completeRun(this.options.workspaceId, runId, {
+        actor,
+        result: resultText || undefined
+      });
+      return result("run", run, formatRun(run));
+    }
+
+    if (subcommand === "compile") {
+      const runId = requiredArg(args[1], "run compile requires a run id.");
+      const compiled = await this.options.memoryfs.compileRun(this.options.workspaceId, runId, { actor });
+      return result("run", compiled, formatCompileRun(compiled));
+    }
+
+    if (subcommand === "show") {
+      const runId = requiredArg(args[1], "run show requires a run id.");
+      const run = this.options.memoryfs.getRun(this.options.workspaceId, runId);
+      return result("run", run, formatRun(run));
+    }
+
+    if (subcommand === "list") {
+      const runs = this.options.memoryfs.listRuns(this.options.workspaceId);
+      return result("run", runs, runs.map(formatRun).join("\n") || "(no runs)");
+    }
+
+    if (subcommand === "path") {
+      const runId = requiredArg(args[1], "run path requires a run id.");
+      return result("run", { path: `/runs/${runId}` }, `/runs/${runId}`);
+    }
+
+    if (subcommand === "today") {
+      const date = new Date().toISOString().slice(0, 10);
+      return result("run", { path: `/runs/${date}` }, `/runs/${date}`);
+    }
+
+    throw new Error("Usage: run create <task> | run complete <run_id> [result] | run compile <run_id> | run show <run_id> | run list | run path <run_id> | run today");
+  }
+
   private node(args: string[]): ShellExecResult {
     const subcommand = args[0];
     if (subcommand === "list") {
@@ -210,6 +295,33 @@ export class MemoryFsShell {
   private async raw(nodeId: string): Promise<ShellExecResult> {
     const content = await this.options.memoryfs.readRawForNode(this.options.workspaceId, nodeId);
     return result("raw", { node_id: nodeId, content }, content);
+  }
+
+  private async promote(args: string[]): Promise<ShellExecResult<MemoryPromotion>> {
+    const sourcePath = requiredArg(args[0], "promote requires a source path.");
+    const targetPath = requiredArg(optionValue(args, "--to"), "promote requires --to <target_path>.");
+    const promotion = await this.options.memoryfs.promoteMemory(this.options.workspaceId, {
+      source_path: sourcePath,
+      target_path: targetPath,
+      source_node_id: optionValue(args, "--node"),
+      reason: optionValue(args, "--reason"),
+      actor: this.options.actor ?? "agent:virtual-bash",
+      require_review: true
+    });
+    return result("promote", promotion, formatPromotion(promotion));
+  }
+
+  private health(): ShellExecResult<MemoryHealthReport> {
+    const health = this.options.memoryfs.getMemoryHealth(this.options.workspaceId);
+    return result("health", health, formatHealth(health));
+  }
+
+  private sync(args: string[]): ShellExecResult<SyncStatus> {
+    if (args[0] !== "status") {
+      throw new Error("Usage: sync status");
+    }
+    const status = this.options.memoryfs.getSyncStatus(this.options.workspaceId);
+    return result("sync", status, formatSyncStatus(status));
   }
 
   private status(): ShellExecResult {
@@ -246,7 +358,8 @@ export class VirtualBash extends MemoryFsShell {
       memoryfs,
       workspaceId,
       actor: options.actor,
-      ingestWrites: options.ingestWrites
+      ingestWrites: options.ingestWrites,
+      allowProtectedWrite: options.allowProtectedWrite
     });
   }
 }
@@ -333,4 +446,57 @@ function requiredArg(value: string | undefined, message: string): string {
     throw new Error(message);
   }
   return value;
+}
+
+function optionValue(args: string[], flag: string): string | undefined {
+  const index = args.indexOf(flag);
+  if (index === -1) return undefined;
+  return args[index + 1];
+}
+
+function formatRun(run: AgentRun): string {
+  return `${run.id} ${run.status} ${run.run_path}\n  ${run.title}`;
+}
+
+function formatCompileRun(compiled: CompileRunResponse): string {
+  return [
+    compiled.summary,
+    `candidate_nodes: ${compiled.candidate_nodes.length}`,
+    `suggested_promotions: ${compiled.suggested_promotions.length}`,
+    `contradictions: ${compiled.contradictions.length}`,
+    compiled.followups.length ? `followups: ${compiled.followups.join("; ")}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function formatPromotion(promotion: MemoryPromotion): string {
+  return [
+    `${promotion.id} ${promotion.status}`,
+    `${promotion.source_path} -> ${promotion.target_path}`,
+    promotion.candidate_node_id ? `candidate: ${promotion.candidate_node_id}` : "",
+    promotion.reason ? `reason: ${promotion.reason}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function formatHealth(health: MemoryHealthReport): string {
+  return [
+    `Memory health: ${health.overall_score}/100`,
+    `source coverage: ${health.source_coverage}%`,
+    `contradictions: ${health.contradiction_count}`,
+    `pending promotions: ${health.unresolved_promotion_count}`,
+    `orphans: ${health.orphan_node_count}`,
+    `raw missing: ${health.raw_missing_count}`
+  ].join("\n");
+}
+
+function formatSyncStatus(status: SyncStatus): string {
+  return [
+    `Sync: ${status.enabled ? "enabled" : "disabled"} (${status.mode})`,
+    `pending events: ${status.pending_events}`,
+    `unresolved conflicts: ${status.unresolved_conflicts}`,
+    `object storage: ${status.object_storage.configured ? status.object_storage.bucket : "local blobs"}`
+  ].join("\n");
 }
