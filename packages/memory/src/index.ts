@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
 import { buildExtractMemoryNodesPrompt } from "./prompts/extract-memory-nodes.js";
+import { buildExtractReasoningMemoriesPrompt } from "./prompts/extract-reasoning-memories.js";
+
+export * from "./curation/index.js";
 
 export const memoryTypes = [
   "preference",
@@ -11,6 +14,7 @@ export const memoryTypes = [
   "research_finding",
   "unresolved_question",
   "run_summary",
+  "reasoning_memory",
   "other"
 ] as const;
 
@@ -25,6 +29,32 @@ export interface ExtractedMemoryNode {
   memory_type: MemoryType;
   importance: 1 | 2 | 3 | 4 | 5;
   confidence: number;
+}
+
+export interface ExtractedReasoningMemory {
+  type: "reasoning_memory";
+  title: string;
+  trigger: string;
+  context: string;
+  strategy: string;
+  failure_pattern: string;
+  success_pattern: string;
+  applies_to: string[];
+  preconditions: string[];
+  anti_patterns: string[];
+  source_run: string;
+  source_refs: string[];
+  confidence: number;
+  status: "candidate";
+  reason: string;
+}
+
+export interface ReasoningMemoryRunInput {
+  run_path: string;
+  task: string;
+  status: string;
+  artifacts: Record<string, string>;
+  options?: MemoryModelOptions;
 }
 
 export interface MemoryModelOptions {
@@ -180,11 +210,11 @@ function inferTopics(query: string, projectHint?: string): string[] {
 function defaultMemoryTypesForMode(mode: RecallMode): string[] {
   switch (mode) {
     case "task_preparation":
-      return ["decision", "constraint", "preference", "task", "error", "run_summary"];
+      return ["decision", "constraint", "preference", "task", "error", "run_summary", "reasoning_memory"];
     case "fact_lookup":
       return ["fact", "research_finding", "decision", "constraint"];
     case "debugging":
-      return ["error", "run_summary", "constraint", "decision", "task"];
+      return ["error", "run_summary", "constraint", "decision", "task", "reasoning_memory"];
     case "handoff":
       return ["run_summary", "decision", "task", "unresolved_question", "constraint"];
     case "research":
@@ -317,6 +347,118 @@ export function validateExtractedNodesJson(jsonText: string, sourceContent?: str
   return parsed.map((item, index) => validateExtractedNode(item, index, sourceContent));
 }
 
+export async function extractReasoningMemoriesFromRun(input: ReasoningMemoryRunInput): Promise<ExtractedReasoningMemory[]> {
+  const options = input.options ?? {};
+  const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
+  const sourceContent = reasoningSourceContent(input);
+
+  if (options.useLlm !== false && apiKey) {
+    try {
+      const prompt = buildExtractReasoningMemoriesPrompt(input);
+      const content = await requestChatCompletion(prompt, {
+        ...options,
+        apiKey
+      });
+      return validateReasoningMemoriesJson(content, sourceContent, input.run_path);
+    } catch {
+      return fallbackExtractReasoningMemories(input);
+    }
+  }
+
+  return fallbackExtractReasoningMemories(input);
+}
+
+export function validateReasoningMemoriesJson(
+  jsonText: string,
+  sourceContent?: string,
+  sourceRun?: string
+): ExtractedReasoningMemory[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (error) {
+    throw new Error(`Reasoning memory extraction did not return valid JSON: ${(error as Error).message}`);
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error("Reasoning memory JSON must be an array.");
+  }
+
+  return parsed.map((item, index) => validateReasoningMemory(item, index, sourceContent, sourceRun));
+}
+
+export function validateReasoningMemory(
+  item: unknown,
+  index = 0,
+  sourceContent?: string,
+  sourceRun?: string
+): ExtractedReasoningMemory {
+  if (!item || typeof item !== "object") {
+    throw new Error(`Reasoning memory at index ${index} must be an object.`);
+  }
+
+  const candidate = item as Record<string, unknown>;
+  if (candidate.type !== "reasoning_memory") {
+    throw new Error(`Reasoning memory at index ${index} type must be reasoning_memory.`);
+  }
+  if (candidate.status !== "candidate") {
+    throw new Error(`Reasoning memory at index ${index} status must be candidate.`);
+  }
+
+  const title = requiredString(candidate.title, "title", index);
+  const trigger = requiredString(candidate.trigger, "trigger", index);
+  const context = requiredString(candidate.context, "context", index);
+  const strategy = requiredString(candidate.strategy, "strategy", index);
+  const failurePattern = requiredString(candidate.failure_pattern, "failure_pattern", index);
+  const successPattern = requiredString(candidate.success_pattern, "success_pattern", index);
+  const sourceRunValue = requiredString(candidate.source_run, "source_run", index);
+  const reason = requiredString(candidate.reason, "reason", index);
+
+  if (sourceRun && sourceRunValue !== sourceRun) {
+    throw new Error(`Reasoning memory at index ${index} source_run must be ${sourceRun}.`);
+  }
+
+  const appliesTo = requiredStringArray(candidate.applies_to, "applies_to", index);
+  const preconditions = requiredStringArray(candidate.preconditions, "preconditions", index);
+  const antiPatterns = requiredStringArray(candidate.anti_patterns, "anti_patterns", index);
+  const sourceRefs = requiredStringArray(candidate.source_refs, "source_refs", index);
+
+  if (sourceRefs.length === 0 || !sourceRefs.every((ref) => ref.startsWith(sourceRunValue))) {
+    throw new Error(`Reasoning memory at index ${index} source_refs must point inside source_run.`);
+  }
+
+  if (typeof candidate.confidence !== "number" || candidate.confidence < 0 || candidate.confidence > 1) {
+    throw new Error(`Reasoning memory at index ${index} confidence must be a number from 0 to 1.`);
+  }
+
+  if (sourceContent) {
+    const support = [title, trigger, context, strategy, failurePattern, successPattern, reason].some((field) =>
+      sourceContent.toLowerCase().includes(field.toLowerCase().slice(0, Math.min(field.length, 80)))
+    );
+    if (!support) {
+      throw new Error(`Reasoning memory at index ${index} must be grounded in the run artifacts.`);
+    }
+  }
+
+  return {
+    type: "reasoning_memory",
+    title,
+    trigger,
+    context,
+    strategy,
+    failure_pattern: failurePattern,
+    success_pattern: successPattern,
+    applies_to: appliesTo,
+    preconditions,
+    anti_patterns: antiPatterns,
+    source_run: sourceRunValue,
+    source_refs: sourceRefs,
+    confidence: candidate.confidence,
+    status: "candidate",
+    reason
+  };
+}
+
 export function validateExtractedNode(
   item: unknown,
   index = 0,
@@ -389,10 +531,72 @@ function requiredString(value: unknown, field: string, index: number): string {
   return value.trim();
 }
 
+function requiredStringArray(value: unknown, field: string, index: number): string[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Reasoning memory at index ${index} ${field} must be an array.`);
+  }
+  const items = value.map((item, itemIndex) => {
+    if (typeof item !== "string" || !item.trim()) {
+      throw new Error(`Reasoning memory at index ${index} ${field}[${itemIndex}] must be a non-empty string.`);
+    }
+    return item.trim();
+  });
+  if (items.length > 12) {
+    throw new Error(`Reasoning memory at index ${index} ${field} must contain at most 12 values.`);
+  }
+  return unique(items);
+}
+
 export function fallbackExtractMemoryNodes(content: string, path: string): ExtractedMemoryNode[] {
   return chunkMarkdown(content)
     .map((chunk) => fallbackNodeForChunk(chunk, path))
     .filter((node): node is ExtractedMemoryNode => Boolean(node));
+}
+
+export function fallbackExtractReasoningMemories(input: ReasoningMemoryRunInput): ExtractedReasoningMemory[] {
+  const combined = reasoningSourceContent(input);
+  if (!combined.trim()) return [];
+
+  const lower = combined.toLowerCase();
+  const hasFailure = /\b(error|failed|failure|timeout|regression|bug|blocked|invalid|exception)\b/.test(lower);
+  const hasSuccess = /\b(fixed|resolved|succeeded|success|passed|avoided|worked|solution|strategy|use|used)\b/.test(lower);
+  const hasLesson = /\b(lesson|learned|next time|avoid|instead|strategy|pattern|use|prefer|direct|retry)\b/.test(lower);
+  if (!hasFailure && !hasSuccess && !hasLesson) return [];
+
+  const resultText = input.artifacts["result.md"] || combined;
+  const errorText = input.artifacts["errors.md"] || combined;
+  const followupText = input.artifacts["followups.md"] || "";
+  const sourceRefs = reasoningSourceRefs(input);
+  const title = reasoningTitle(resultText, errorText, input.task);
+  const failurePattern = firstMatchingSentence(errorText, /\b(error|failed|failure|timeout|regression|bug|blocked|invalid|exception)\b/i)
+    ?? (hasFailure ? shortestUsefulExcerpt(errorText || combined) : "The run exposed a task pattern that can fail without the right strategy.");
+  const successPattern = firstMatchingSentence(resultText, /\b(fixed|resolved|succeeded|success|passed|avoided|worked|solution|strategy|use|used)\b/i)
+    ?? firstMatchingSentence(followupText, /\b(next|follow|continue|verify|promote|review)\b/i)
+    ?? (hasSuccess ? shortestUsefulExcerpt(resultText || combined) : "The run identified a reusable strategy to try before repeating the failure.");
+  const strategy =
+    firstMatchingSentence(resultText, /\b(use|used|choose|chosen|generate|direct|avoid|instead|strategy|solution|fix|resolved)\b/i)
+    ?? firstMatchingSentence(followupText, /\b(next|follow|verify|promote|review|use|avoid)\b/i)
+    ?? `Review the source run and apply the successful approach from ${input.run_path}.`;
+
+  return [
+    {
+      type: "reasoning_memory",
+      title,
+      trigger: reasoningTrigger(input.task, failurePattern),
+      context: reasoningContext(input.task, combined, input.status),
+      strategy,
+      failure_pattern: failurePattern,
+      success_pattern: successPattern,
+      applies_to: reasoningAppliesTo(combined, input.task),
+      preconditions: reasoningPreconditions(combined, input.task, hasFailure),
+      anti_patterns: reasoningAntiPatterns(combined, failurePattern),
+      source_run: input.run_path,
+      source_refs: sourceRefs,
+      confidence: hasFailure && hasSuccess ? 0.82 : 0.68,
+      status: "candidate",
+      reason: `Derived from ${input.status} run artifacts using deterministic reasoning extraction.`
+    }
+  ];
 }
 
 function fallbackNodeForChunk(chunk: string, path: string): ExtractedMemoryNode | null {
@@ -501,6 +705,113 @@ function extractTags(content: string, path: string, memoryType: MemoryType): str
   }
 
   return tags.slice(0, 8);
+}
+
+function reasoningSourceContent(input: ReasoningMemoryRunInput): string {
+  return [
+    `Task: ${input.task}`,
+    `Status: ${input.status}`,
+    input.artifacts["result.md"] ? `Result:\n${input.artifacts["result.md"]}` : "",
+    input.artifacts["errors.md"] ? `Errors:\n${input.artifacts["errors.md"]}` : "",
+    input.artifacts["followups.md"] ? `Followups:\n${input.artifacts["followups.md"]}` : "",
+    input.artifacts["actions.md"] ? `Actions:\n${input.artifacts["actions.md"]}` : "",
+    input.artifacts["memory-used.md"] ? `Memory used:\n${input.artifacts["memory-used.md"]}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function reasoningSourceRefs(input: ReasoningMemoryRunInput): string[] {
+  const refs = ["prompt.md", "result.md", "errors.md", "followups.md", "actions.md", "memory-used.md"]
+    .filter((name) => input.artifacts[name]?.trim())
+    .map((name) => `${input.run_path}/${name}`);
+  return refs.length > 0 ? refs : [`${input.run_path}/prompt.md`];
+}
+
+function reasoningTitle(resultText: string, errorText: string, task: string): string {
+  const source =
+    firstMatchingSentence(resultText, /\b(use|used|choose|chosen|direct|avoid|instead|strategy|solution|fix|resolved)\b/i) ??
+    firstMatchingSentence(errorText, /\b(error|failed|failure|timeout|regression|blocked|invalid)\b/i) ??
+    task;
+  const clean = source.replace(/^(decision|preference|result|error|lesson):\s*/i, "").trim();
+  const words = clean.split(/\s+/).slice(0, 10).join(" ");
+  return titleCase(words.length > 90 ? `${words.slice(0, 87).trim()}...` : words);
+}
+
+function reasoningTrigger(task: string, failurePattern: string): string {
+  const source = firstMatchingSentence(`${failurePattern} ${task}`, /\b(when|large|upload|serverless|auth|token|deploy|test|build|storage|api|error|timeout)\b/i)
+    ?? task;
+  return source.length > 160 ? source.slice(0, 157).trim() : source;
+}
+
+function reasoningContext(task: string, combined: string, status: string): string {
+  const sentence =
+    firstMatchingSentence(combined, /\b(because|when|while|during|serverless|storage|upload|deploy|auth|test|build)\b/i) ??
+    task;
+  return `Run status was ${status}. ${sentence}`.slice(0, 420);
+}
+
+function reasoningAppliesTo(content: string, task: string): string[] {
+  const known = [
+    "Netlify",
+    "Supabase",
+    "Supabase Storage",
+    "serverless",
+    "OAuth",
+    "uploads",
+    "video uploads",
+    "tests",
+    "deployments",
+    "CLI",
+    "MCP"
+  ];
+  const combined = `${content} ${task}`.toLowerCase();
+  const matches = known.filter((item) => combined.includes(item.toLowerCase()));
+  const tokens = tokenize(`${task} ${content}`).filter((token) => !stopWords.has(token)).slice(0, 4);
+  return unique([...matches, ...tokens]).slice(0, 8);
+}
+
+function reasoningPreconditions(content: string, task: string, hasFailure: boolean): string[] {
+  const preconditions = new Set<string>();
+  const combined = `${content} ${task}`.toLowerCase();
+  if (combined.includes("serverless")) preconditions.add("serverless backend");
+  if (combined.includes("storage")) preconditions.add("object storage available");
+  if (combined.includes("upload")) preconditions.add("file upload workflow");
+  if (combined.includes("test")) preconditions.add("test failure or regression");
+  if (combined.includes("deploy")) preconditions.add("deployment workflow");
+  if (hasFailure) preconditions.add("previous failure observed");
+  if (preconditions.size === 0) preconditions.add("similar task constraints appear");
+  return [...preconditions].slice(0, 8);
+}
+
+function reasoningAntiPatterns(content: string, failurePattern: string): string[] {
+  const antiPatterns = new Set<string>();
+  const combined = `${content} ${failurePattern}`.toLowerCase();
+  if (combined.includes("serverless") && combined.includes("upload")) {
+    antiPatterns.add("proxy entire binary through serverless function");
+  }
+  if (combined.includes("retry")) antiPatterns.add("repeat blind retries without changing strategy");
+  if (combined.includes("timeout")) antiPatterns.add("ignore timeout or payload limits");
+  if (combined.includes("secret")) antiPatterns.add("store secrets in durable memory");
+  if (antiPatterns.size === 0) antiPatterns.add("repeat the failing approach without checking run artifacts");
+  return [...antiPatterns].slice(0, 8);
+}
+
+function firstMatchingSentence(content: string, pattern: RegExp): string | null {
+  const sentences = content
+    .replace(/\r\n/g, "\n")
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((sentence) => sentence.replace(/^[-*]\s+/, "").trim())
+    .filter(Boolean);
+  return sentences.find((sentence) => pattern.test(sentence)) ?? null;
+}
+
+function titleCase(text: string): string {
+  return text
+    .split(/\s+/)
+    .map((word) => (word.length > 3 ? capitalize(word) : word.toLowerCase()))
+    .join(" ")
+    .replace(/\b(api|mcp|cli|oauth)\b/gi, (match) => match.toUpperCase());
 }
 
 export async function embedText(text: string, options: MemoryModelOptions = {}): Promise<number[]> {

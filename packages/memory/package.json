@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./curation": "./src/curation/index.ts",
     "./extractors": "./src/extractors/index.ts",
     "./prompts/extract-memory-nodes": "./src/prompts/extract-memory-nodes.ts"
   },

@@ -47,6 +47,14 @@ export interface MetadataMemoryNode {
   trust_level?: string;
   status?: string;
   ttl_expires_at?: string | null;
+  valid_from?: string | null;
+  valid_until?: string | null;
+  last_confirmed_at?: string | null;
+  last_used_at?: string | null;
+  stale_reason?: string | null;
+  duplicate_of?: string | null;
+  conflicts_with_json?: string | null;
+  conflict_reason?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -128,8 +136,8 @@ export class SQLiteMetadataStore implements MetadataStore {
     this.requireDb()
       .prepare(
         `INSERT OR REPLACE INTO memory_nodes
-         (id, workspace_id, source_file_id, source_blob_sha256, summary, trigger, detail, raw_excerpt, raw_ref, source_location_json, tags_json, memory_type, importance, confidence, trust_level, status, ttl_expires_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, workspace_id, source_file_id, source_blob_sha256, summary, trigger, detail, raw_excerpt, raw_ref, source_location_json, tags_json, memory_type, importance, confidence, trust_level, status, ttl_expires_at, valid_from, valid_until, last_confirmed_at, last_used_at, stale_reason, duplicate_of, conflicts_with_json, conflict_reason, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         node.id,
@@ -149,6 +157,14 @@ export class SQLiteMetadataStore implements MetadataStore {
         node.trust_level ?? "source_backed",
         node.status ?? "active",
         node.ttl_expires_at ?? null,
+        node.valid_from ?? node.created_at,
+        node.valid_until ?? null,
+        node.last_confirmed_at ?? null,
+        node.last_used_at ?? null,
+        node.stale_reason ?? null,
+        node.duplicate_of ?? null,
+        node.conflicts_with_json ?? "[]",
+        node.conflict_reason ?? null,
         node.created_at,
         node.updated_at
       );
@@ -272,8 +288,8 @@ export class PostgresMetadataStore implements MetadataStore {
     }
     await this.client!.query(
       `INSERT INTO memory_nodes
-       (id, workspace_id, source_file_id, source_blob_sha256, summary, trigger, detail, raw_excerpt, raw_ref, source_location_json, tags_json, memory_type, importance, confidence, trust_level, status, ttl_expires_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+       (id, workspace_id, source_file_id, source_blob_sha256, summary, trigger, detail, raw_excerpt, raw_ref, source_location_json, tags_json, memory_type, importance, confidence, trust_level, status, ttl_expires_at, valid_from, valid_until, last_confirmed_at, last_used_at, stale_reason, duplicate_of, conflicts_with_json, conflict_reason, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
        ON CONFLICT (id) DO UPDATE SET
          summary = EXCLUDED.summary,
          trigger = EXCLUDED.trigger,
@@ -297,6 +313,14 @@ export class PostgresMetadataStore implements MetadataStore {
         node.trust_level ?? "source_backed",
         node.status ?? "active",
         node.ttl_expires_at ?? null,
+        node.valid_from ?? node.created_at,
+        node.valid_until ?? null,
+        node.last_confirmed_at ?? null,
+        node.last_used_at ?? null,
+        node.stale_reason ?? null,
+        node.duplicate_of ?? null,
+        node.conflicts_with_json ?? "[]",
+        node.conflict_reason ?? null,
         node.created_at,
         node.updated_at
       ]
