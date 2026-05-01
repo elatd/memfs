@@ -15,7 +15,7 @@ Each object must include:
 - detail: 2 to 4 sentences with useful context.
 - raw_excerpt: the shortest exact source excerpt that supports the memory.
 - tags: 3 to 8 lowercase tags.
-- memory_type: one of preference, decision, constraint, fact, task, error, research_finding, unresolved_question, run_summary, other.
+- memory_type: one of preference, decision, constraint, fact, task, error, research_finding, unresolved_question, run_summary, reasoning_memory, other.
 - importance: integer from 1 to 5.
 - confidence: number from 0 to 1.
 

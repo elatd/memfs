@@ -6,6 +6,8 @@ Raw files are always the source of truth. Memory nodes are retrieval indexes wit
 
 MemFS includes a trust layer for long-lived memory: scratch and run memory can be written freely, durable memory flows through reviewable promotions, snapshots can be diffed and rolled back, and health reports make memory drift visible.
 
+MemFS separates task execution from durable memory writing. Agents may propose memories freely, but MemFS validates, deduplicates, reviews, promotes, searches, and audits them through a memory curation pipeline. See [Memory Curation](./docs/memory-curation.md).
+
 Task workflows are built in: pre-task briefs, run folders, memory-used logs, compile-run candidate memories, handoff summaries, and stale memory review help agents carry context across sessions.
 
 MemFS can ingest common local files while preserving source references. Markdown, text, JSON, CSV, HTML, PDF, DOCX, code, and terminal logs are extracted into derived text with source locations; images still fail gracefully unless OCR/caption extraction is configured later.
@@ -13,6 +15,12 @@ MemFS can ingest common local files while preserving source references. Markdown
 Local SQLite mode is the default. Optional team and cloud foundations include storage adapters, Postgres metadata support, object blob storage, sync events, role-based permissions, conflict detection, and conflict resolution.
 
 A MemFS workspace can also be browsed as a mounted filesystem. Mounts are read-only by default and read-write only when requested; writes still go through MemFS core/API so protected path checks, ingestion flags, and audit events remain intact.
+
+## How MemFS is different
+
+MemFS is not just a vector database, memory API, or mounted cloud memory folder. MemFS is a local-first, source-backed memory filesystem for AI agents. Humans and agents work with ordinary files, while MemFS derives memory nodes for semantic recall. Raw files remain canonical. Durable memory can be proposed, reviewed, promoted, audited, superseded, snapshotted, and rolled back.
+
+See [How MemFS Compares](./docs/comparisons.md) for a concise positioning matrix.
 
 ## Clean-Room Note
 
@@ -123,6 +131,36 @@ Run tests:
 pnpm test
 ```
 
+Run the local retrieval benchmark:
+
+```bash
+pnpm benchmark:retrieval
+```
+
+## SDK Quickstart
+
+The high-level SDK keeps the Mem0-style path short while still using MemFS workspaces, files, candidates, runs, and review rules underneath:
+
+```ts
+import { MemFSClient } from "@memoryfs/sdk";
+
+const memfs = new MemFSClient({ apiUrl: "http://localhost:3131" });
+
+await memfs.remember({
+  workspace: "doozy",
+  text: "The user prefers Netlify Functions for backend MVPs.",
+  scope: "workspace",
+  source: "explicit_user_instruction"
+});
+
+const results = await memfs.recall({
+  workspace: "doozy",
+  query: "backend preference"
+});
+```
+
+`remember()` creates a reviewable candidate by default. Pass `approved: true` only when the caller is making an explicit review decision; protected durable paths still flow through MemFS candidate approval, promotion, audit, and source-reference logic. Lower-level `MemoryFSClient` methods remain available for direct API access.
+
 ## Example Agent Workflow
 
 ```ts
@@ -148,19 +186,24 @@ More docs:
 - [CLI](./docs/cli.md)
 - [Virtual Bash](./docs/virtual-bash.md)
 - [MCP](./docs/mcp.md)
+- [OpenClaw MCP Setup](./docs/openclaw.md)
 - [Mount](./docs/mount.md)
 - [Mounted Agent Workflow](./docs/mounted-agent-workflow.md)
 - [Audit Events](./docs/audit.md)
 - [Explainable Recall](./docs/explainable-recall.md)
 - [Memory Graph](./docs/memory-graph.md)
+- [Memory Scopes](./docs/scopes.md)
 - [Trust Layer](./docs/trust-layer.md)
+- [Candidate Deduplication and Conflicts](./docs/conflicts.md)
 - [Promotions](./docs/promotions.md)
 - [Snapshots](./docs/snapshots.md)
 - [Memory Health](./docs/memory-health.md)
 - [Runs](./docs/runs.md)
 - [Briefs](./docs/briefs.md)
 - [Compile Run](./docs/compile-run.md)
+- [Reasoning Memories](./docs/reasoning-memories.md)
 - [Handoff](./docs/handoff.md)
+- [Verbatim Archive](./docs/archive.md)
 - [Multimodal Ingestion](./docs/multimodal-ingestion.md)
 - [Source References](./docs/source-references.md)
 - [Storage Adapters](./docs/storage-adapters.md)

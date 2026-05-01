@@ -585,7 +585,7 @@ function resizeBuffer(existing: Buffer, size: number): Buffer {
 }
 
 function isControlQueryPath(filePath: string): boolean {
-  return filePath === "/.memfs/recall.query" || filePath === "/.memfs/search.query";
+  return filePath === "/.memfs/recall.query" || filePath === "/.memfs/search.query" || filePath === "/.memfs/brief.query";
 }
 
 function toFuseStat(type: MountNodeType, size: number, timestamp: Date): Record<string, unknown> {

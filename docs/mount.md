@@ -144,23 +144,46 @@ Virtual files:
 - `/.memfs/recall.results.md`
 - `/.memfs/search.query`
 - `/.memfs/search.results.md`
+- `/.memfs/brief.query`
+- `/.memfs/brief.results.md`
 - `/.memfs/audit.md`
 - `/.memfs/health.md`
 
 `README.md` includes examples for using the control directory through ordinary file reads and writes.
 
-`status.json` includes the workspace id/name, mount mode, actor, `ingestOnWrite`, `allowProtectedWrite`, `mountedAt`, API URL, and the most recent recall/search query times for this mount session.
+`status.json` includes the workspace id/name, mount mode, actor, `ingestOnWrite`, `allowProtectedWrite`, `mountedAt`, API URL, and the most recent recall/search/brief query times for this mount session.
 
-Writing `recall.query` or `search.query` runs recall/search and updates the corresponding results file for this mount session only. Results include summary, trigger, tags, score, `source_path`, and `raw_ref`; raw source content is not returned.
+Writing `search.query` runs hybrid memory grep and updates `search.results.md` for this mount session only.
 
-Control query writes emit `mount.recall.query` or `mount.search.query` audit events when audit support is available.
+```bash
+echo "OAuth refresh tokens" > ~/MemFS/demo/.memfs/search.query
+cat ~/MemFS/demo/.memfs/search.results.md
+```
+
+Writing `recall.query` runs normal trusted recall rules and updates `recall.results.md`. Stale, rejected, and superseded memories are excluded by default; raw source content is not returned.
+
+```bash
+echo "backend preference" > ~/MemFS/demo/.memfs/recall.query
+cat ~/MemFS/demo/.memfs/recall.results.md
+```
+
+Writing `brief.query` creates a compact pre-task memory brief and updates `brief.results.md`.
+
+```bash
+echo "Fix OAuth refresh token flow" > ~/MemFS/demo/.memfs/brief.query
+cat ~/MemFS/demo/.memfs/brief.results.md
+```
+
+Search, recall, and brief results include `source_path`, trust level, score, memory node id, and `raw_ref`. They also include a warning that raw source must be read explicitly by opening the referenced source file or using raw-source tools.
+
+Control query writes emit `mount.recall.query`, `mount.search.query`, or `mount.brief.query` audit events when audit support is available.
 
 The `.memfs` namespace is reserved:
 
 - control files are not normal workspace files
 - `rm .memfs` and `rm .memfs/*` fail
 - rename into or out of `.memfs` fails
-- normal writes cannot overwrite control files, except query writes to `recall.query` and `search.query`
+- normal writes cannot overwrite control files, except query writes to `recall.query`, `search.query`, and `brief.query`
 
 ## Audit Events
 
@@ -174,6 +197,7 @@ Mount lifecycle and file operations use the regular MemFS audit table when suppo
 - `mount.protected_write.denied`
 - `mount.recall.query`
 - `mount.search.query`
+- `mount.brief.query`
 
 Core/API file events such as `file_write`, `file_delete`, `protected_write_denied`, and `memory_ingest_file` are still emitted by the underlying MemFS operations.
 

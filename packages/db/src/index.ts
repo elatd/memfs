@@ -175,6 +175,23 @@ CREATE TABLE IF NOT EXISTS memory_nodes (
   trust_level TEXT NOT NULL DEFAULT 'source_backed',
   status TEXT NOT NULL DEFAULT 'active',
   ttl_expires_at TEXT,
+  valid_from TEXT,
+  valid_until TEXT,
+  last_confirmed_at TEXT,
+  last_used_at TEXT,
+  stale_reason TEXT,
+  duplicate_of TEXT,
+  conflicts_with_json TEXT NOT NULL DEFAULT '[]',
+  conflict_reason TEXT,
+  scope TEXT NOT NULL DEFAULT 'workspace',
+  project_id TEXT,
+  project_slug TEXT,
+  repo_id TEXT,
+  repo_path TEXT,
+  session_id TEXT,
+  agent_id TEXT,
+  contact_id TEXT,
+  run_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -194,6 +211,22 @@ CREATE TABLE IF NOT EXISTS memory_links (
   FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
   FOREIGN KEY(from_node_id) REFERENCES memory_nodes(id) ON DELETE CASCADE,
   FOREIGN KEY(to_node_id) REFERENCES memory_nodes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS memory_graph_edges (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  from_type TEXT NOT NULL,
+  from_id TEXT NOT NULL,
+  to_type TEXT NOT NULL,
+  to_id TEXT NOT NULL,
+  relation_type TEXT NOT NULL,
+  confidence REAL NOT NULL DEFAULT 0.7,
+  reason TEXT NOT NULL DEFAULT '',
+  source_ref TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(workspace_id, from_type, from_id, to_type, to_id, relation_type),
+  FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS recall_traces (
@@ -251,6 +284,15 @@ CREATE TABLE IF NOT EXISTS memory_promotions (
   reason TEXT,
   append INTEGER NOT NULL DEFAULT 1,
   candidate_node_id TEXT,
+  scope TEXT NOT NULL DEFAULT 'workspace',
+  project_id TEXT,
+  project_slug TEXT,
+  repo_id TEXT,
+  repo_path TEXT,
+  session_id TEXT,
+  agent_id TEXT,
+  contact_id TEXT,
+  run_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -350,6 +392,24 @@ CREATE TABLE IF NOT EXISTS handoff_summaries (
   created_at TEXT NOT NULL,
   FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
   FOREIGN KEY(run_id) REFERENCES agent_runs(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS archive_entries (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  archive_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  path TEXT NOT NULL,
+  source_file_id TEXT NOT NULL,
+  source_blob_sha256 TEXT NOT NULL,
+  raw_ref TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(workspace_id, path),
+  FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY(source_file_id) REFERENCES files(id) ON DELETE CASCADE,
+  FOREIGN KEY(source_blob_sha256) REFERENCES blobs(sha256)
 );
 
 CREATE TABLE IF NOT EXISTS organizations (
@@ -453,8 +513,12 @@ CREATE INDEX IF NOT EXISTS idx_extracted_sources_file ON extracted_sources(works
 CREATE INDEX IF NOT EXISTS idx_file_artifacts_file ON file_artifacts(workspace_id, file_id, artifact_type);
 CREATE INDEX IF NOT EXISTS idx_memory_nodes_workspace ON memory_nodes(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_memory_nodes_trust_status ON memory_nodes(workspace_id, trust_level, status);
+CREATE INDEX IF NOT EXISTS idx_memory_nodes_scope ON memory_nodes(workspace_id, scope);
+CREATE INDEX IF NOT EXISTS idx_memory_nodes_temporal ON memory_nodes(workspace_id, status, valid_until, last_confirmed_at);
 CREATE INDEX IF NOT EXISTS idx_memory_nodes_source ON memory_nodes(source_file_id, source_blob_sha256);
 CREATE INDEX IF NOT EXISTS idx_memory_links_workspace ON memory_links(workspace_id, relation_type);
+CREATE INDEX IF NOT EXISTS idx_memory_graph_edges_from ON memory_graph_edges(workspace_id, from_type, from_id);
+CREATE INDEX IF NOT EXISTS idx_memory_graph_edges_to ON memory_graph_edges(workspace_id, to_type, to_id);
 CREATE INDEX IF NOT EXISTS idx_memory_embeddings_node ON memory_embeddings(memory_node_id);
 CREATE INDEX IF NOT EXISTS idx_audit_workspace_created ON audit_events(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_recall_traces_workspace_created ON recall_traces(workspace_id, created_at);
@@ -467,6 +531,8 @@ CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace_created ON agent_runs(worksp
 CREATE INDEX IF NOT EXISTS idx_agent_run_events_run ON agent_run_events(run_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_run_memory_usages_run ON run_memory_usages(run_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_handoff_summaries_workspace_created ON handoff_summaries(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_archive_entries_workspace_created ON archive_entries(workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_archive_entries_path ON archive_entries(workspace_id, path);
 CREATE INDEX IF NOT EXISTS idx_workspace_members_workspace ON workspace_members(workspace_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_sync_events_workspace_created ON sync_events(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_conflict_records_workspace_status ON conflict_records(workspace_id, status);
@@ -493,8 +559,43 @@ function applyCompatibilityMigrations(db: SqliteDatabase): void {
   tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN trust_level TEXT NOT NULL DEFAULT 'source_backed'");
   tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
   tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN ttl_expires_at TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN valid_from TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN valid_until TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN last_confirmed_at TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN last_used_at TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN stale_reason TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN duplicate_of TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN conflicts_with_json TEXT NOT NULL DEFAULT '[]'");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN conflict_reason TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN scope TEXT NOT NULL DEFAULT 'workspace'");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN project_id TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN project_slug TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN repo_id TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN repo_path TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN session_id TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN agent_id TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN contact_id TEXT");
+  tryRun(db, "ALTER TABLE memory_nodes ADD COLUMN run_id TEXT");
   tryRun(db, "ALTER TABLE memory_links ADD COLUMN confidence REAL NOT NULL DEFAULT 0.7");
   tryRun(db, "ALTER TABLE memory_links ADD COLUMN reason TEXT NOT NULL DEFAULT ''");
+  tryRun(
+    db,
+    `CREATE TABLE IF NOT EXISTS memory_graph_edges (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      from_type TEXT NOT NULL,
+      from_id TEXT NOT NULL,
+      to_type TEXT NOT NULL,
+      to_id TEXT NOT NULL,
+      relation_type TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 0.7,
+      reason TEXT NOT NULL DEFAULT '',
+      source_ref TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE(workspace_id, from_type, from_id, to_type, to_id, relation_type),
+      FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+    )`
+  );
   tryRun(
     db,
     `CREATE TABLE IF NOT EXISTS recall_traces (
@@ -585,6 +686,15 @@ function applyCompatibilityMigrations(db: SqliteDatabase): void {
       FOREIGN KEY(node_id) REFERENCES memory_nodes(id) ON DELETE SET NULL
     )`
   );
+  tryRun(db, "ALTER TABLE memory_promotions ADD COLUMN scope TEXT NOT NULL DEFAULT 'workspace'");
+  tryRun(db, "ALTER TABLE memory_promotions ADD COLUMN project_id TEXT");
+  tryRun(db, "ALTER TABLE memory_promotions ADD COLUMN project_slug TEXT");
+  tryRun(db, "ALTER TABLE memory_promotions ADD COLUMN repo_id TEXT");
+  tryRun(db, "ALTER TABLE memory_promotions ADD COLUMN repo_path TEXT");
+  tryRun(db, "ALTER TABLE memory_promotions ADD COLUMN session_id TEXT");
+  tryRun(db, "ALTER TABLE memory_promotions ADD COLUMN agent_id TEXT");
+  tryRun(db, "ALTER TABLE memory_promotions ADD COLUMN contact_id TEXT");
+  tryRun(db, "ALTER TABLE memory_promotions ADD COLUMN run_id TEXT");
   tryRun(
     db,
     `CREATE TABLE IF NOT EXISTS snapshots (
@@ -620,6 +730,10 @@ function applyCompatibilityMigrations(db: SqliteDatabase): void {
     )`
   );
   tryRun(db, "CREATE INDEX IF NOT EXISTS idx_memory_nodes_trust_status ON memory_nodes(workspace_id, trust_level, status)");
+  tryRun(db, "CREATE INDEX IF NOT EXISTS idx_memory_nodes_scope ON memory_nodes(workspace_id, scope)");
+  tryRun(db, "CREATE INDEX IF NOT EXISTS idx_memory_nodes_temporal ON memory_nodes(workspace_id, status, valid_until, last_confirmed_at)");
+  tryRun(db, "CREATE INDEX IF NOT EXISTS idx_memory_graph_edges_from ON memory_graph_edges(workspace_id, from_type, from_id)");
+  tryRun(db, "CREATE INDEX IF NOT EXISTS idx_memory_graph_edges_to ON memory_graph_edges(workspace_id, to_type, to_id)");
   tryRun(db, "CREATE INDEX IF NOT EXISTS idx_memory_promotions_workspace_status ON memory_promotions(workspace_id, status)");
   tryRun(db, "CREATE INDEX IF NOT EXISTS idx_memory_reviews_workspace ON memory_reviews(workspace_id, created_at)");
   tryRun(db, "CREATE INDEX IF NOT EXISTS idx_snapshots_workspace_created ON snapshots(workspace_id, created_at)");
@@ -685,10 +799,32 @@ function applyCompatibilityMigrations(db: SqliteDatabase): void {
       FOREIGN KEY(run_id) REFERENCES agent_runs(id) ON DELETE SET NULL
     )`
   );
+  tryRun(
+    db,
+    `CREATE TABLE IF NOT EXISTS archive_entries (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      archive_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      path TEXT NOT NULL,
+      source_file_id TEXT NOT NULL,
+      source_blob_sha256 TEXT NOT NULL,
+      raw_ref TEXT NOT NULL,
+      metadata_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(workspace_id, path),
+      FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY(source_file_id) REFERENCES files(id) ON DELETE CASCADE,
+      FOREIGN KEY(source_blob_sha256) REFERENCES blobs(sha256)
+    )`
+  );
   tryRun(db, "CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace_created ON agent_runs(workspace_id, created_at)");
   tryRun(db, "CREATE INDEX IF NOT EXISTS idx_agent_run_events_run ON agent_run_events(run_id, created_at)");
   tryRun(db, "CREATE INDEX IF NOT EXISTS idx_run_memory_usages_run ON run_memory_usages(run_id, created_at)");
   tryRun(db, "CREATE INDEX IF NOT EXISTS idx_handoff_summaries_workspace_created ON handoff_summaries(workspace_id, created_at)");
+  tryRun(db, "CREATE INDEX IF NOT EXISTS idx_archive_entries_workspace_created ON archive_entries(workspace_id, created_at)");
+  tryRun(db, "CREATE INDEX IF NOT EXISTS idx_archive_entries_path ON archive_entries(workspace_id, path)");
   tryRun(
     db,
     `CREATE TABLE IF NOT EXISTS organizations (

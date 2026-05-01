@@ -1,6 +1,8 @@
 import {
   Activity,
+  AlertTriangle,
   ArchiveRestore,
+  Ban,
   BookOpen,
   Brain,
   Check,
@@ -11,8 +13,10 @@ import {
   Folder,
   GitBranch,
   History,
+  Inbox,
   Link2,
   ListTree,
+  Pencil,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -22,11 +26,29 @@ import {
   ShieldCheck,
   Sparkles,
   Upload,
-  Users
+  Users,
+  X
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3131";
+
+const memoryTypeOptions = [
+  "preference",
+  "decision",
+  "constraint",
+  "fact",
+  "task",
+  "error",
+  "research_finding",
+  "unresolved_question",
+  "run_summary",
+  "reasoning_memory",
+  "other"
+] as const;
+
+const scopeOptions = ["global", "workspace", "project", "repo", "session", "agent", "contact", "run"] as const;
+const candidateStatusOptions = ["observed", "candidate", "duplicate", "approved", "rejected", "superseded", "stale", "conflicted"] as const;
 
 interface Workspace {
   id: string;
@@ -52,6 +74,15 @@ interface MemoryNode {
   trust_level?: string;
   status?: string;
   ttl_expires_at?: string | null;
+  scope?: string;
+  project_id?: string | null;
+  project_slug?: string | null;
+  repo_id?: string | null;
+  repo_path?: string | null;
+  session_id?: string | null;
+  agent_id?: string | null;
+  contact_id?: string | null;
+  run_id?: string | null;
   source_path: string;
   raw_ref: string;
   raw_excerpt: string | null;
@@ -146,6 +177,40 @@ interface MemoryPromotion {
   reason: string | null;
   candidate_node_id: string | null;
   created_at: string;
+}
+
+interface MemoryCandidate {
+  id: string;
+  node_id: string;
+  memory_text: string;
+  type: string;
+  scope: string;
+  confidence: number;
+  risk_flags: string[];
+  status: string;
+  duplicate_of?: string | null;
+  conflicts_with?: string[];
+  conflict_reason?: string | null;
+  created_by: string;
+  reviewed_by: string | null;
+  promotion_id: string | null;
+  promotion_target_path: string | null;
+  reason: string | null;
+  created_at: string;
+  reviewed_at?: string | null;
+  source_refs: Array<{ source_path: string; raw_ref: string; source_location?: Record<string, unknown> | null }>;
+  node: MemoryNode;
+}
+
+interface CandidateDraft {
+  memory_text: string;
+  type: string;
+  scope: string;
+  tags: string;
+  reason: string;
+  promotion_target_path: string;
+  project_slug: string;
+  repo_path: string;
 }
 
 interface SnapshotRecord {
@@ -270,6 +335,13 @@ export function App() {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [contradictions, setContradictions] = useState<ContradictionRecord[]>([]);
   const [promotions, setPromotions] = useState<MemoryPromotion[]>([]);
+  const [candidates, setCandidates] = useState<MemoryCandidate[]>([]);
+  const [candidateStatusFilter, setCandidateStatusFilter] = useState("candidate");
+  const [candidateScopeFilter, setCandidateScopeFilter] = useState("all");
+  const [candidateRiskFilter, setCandidateRiskFilter] = useState("all");
+  const [candidateProjectFilter, setCandidateProjectFilter] = useState("");
+  const [editingCandidateId, setEditingCandidateId] = useState("");
+  const [candidateDraft, setCandidateDraft] = useState<CandidateDraft>(emptyCandidateDraft());
   const [snapshots, setSnapshots] = useState<SnapshotRecord[]>([]);
   const [snapshotDiff, setSnapshotDiff] = useState<SnapshotDiff | null>(null);
   const [health, setHealth] = useState<MemoryHealth | null>(null);
@@ -291,7 +363,7 @@ export function App() {
   const [searchResults, setSearchResults] = useState<RecallResult[]>([]);
   const [recallResults, setRecallResults] = useState<RecallResult[]>([]);
   const [includeRaw, setIncludeRaw] = useState(false);
-  const [activePanel, setActivePanel] = useState<"recall" | "search" | "nodes" | "contradictions" | "runs" | "trust" | "sync" | "audit">("recall");
+  const [activePanel, setActivePanel] = useState<"recall" | "search" | "nodes" | "contradictions" | "runs" | "candidates" | "trust" | "sync" | "audit">("recall");
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const [nodeLinks, setNodeLinks] = useState<MemoryLinkPacket[]>([]);
   const [linkTarget, setLinkTarget] = useState("");
@@ -316,6 +388,33 @@ export function App() {
   const filteredAudit = auditFilter
     ? auditEvents.filter((event) => `${event.event_type} ${event.actor}`.toLowerCase().includes(auditFilter.toLowerCase()))
     : auditEvents;
+  const candidateRiskFlags = useMemo(
+    () => [...new Set(candidates.flatMap((candidate) => candidate.risk_flags.length ? candidate.risk_flags : ["none"]))].sort(),
+    [candidates]
+  );
+  const filteredCandidates = useMemo(
+    () =>
+      candidates.filter((candidate) => {
+        if (candidateStatusFilter !== "all" && candidate.status !== candidateStatusFilter) return false;
+        if (candidateScopeFilter !== "all" && candidate.scope !== candidateScopeFilter) return false;
+        if (candidateRiskFilter !== "all" && !candidate.risk_flags.includes(candidateRiskFilter)) return false;
+        if (candidateProjectFilter.trim()) {
+          const needle = candidateProjectFilter.trim().toLowerCase();
+          const haystack = [
+            candidate.node.project_slug,
+            candidate.node.project_id,
+            candidate.node.repo_path,
+            candidate.source_refs.map((source) => source.source_path).join(" ")
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          if (!haystack.includes(needle)) return false;
+        }
+        return true;
+      }),
+    [candidates, candidateProjectFilter, candidateRiskFilter, candidateScopeFilter, candidateStatusFilter]
+  );
   const trustCounts = useMemo(() => trustSummary(memoryNodes), [memoryNodes]);
   const selectedRun = useMemo(() => runs.find((run) => run.id === selectedRunId) ?? runs[0], [runs, selectedRunId]);
 
@@ -357,6 +456,7 @@ export function App() {
       nextAudit,
       nextContradictions,
       nextPromotions,
+      nextCandidates,
       nextSnapshots,
       nextHealth,
       nextRuns,
@@ -371,6 +471,7 @@ export function App() {
       api<AuditEvent[]>(`/workspaces/${id}/audit-events`),
       api<ContradictionRecord[]>(`/workspaces/${id}/memory/contradictions`),
       api<MemoryPromotion[]>(`/workspaces/${id}/memory/promotions`),
+      api<MemoryCandidate[]>(`/workspaces/${id}/memory/candidates`),
       api<SnapshotRecord[]>(`/workspaces/${id}/snapshots`),
       api<MemoryHealth>(`/workspaces/${id}/memory/health`),
       api<AgentRun[]>(`/workspaces/${id}/runs`),
@@ -385,6 +486,7 @@ export function App() {
     setAuditEvents(nextAudit);
     setContradictions(nextContradictions);
     setPromotions(nextPromotions);
+    setCandidates(nextCandidates);
     setSnapshots(nextSnapshots);
     setHealth(nextHealth);
     setRuns(nextRuns);
@@ -596,6 +698,91 @@ export function App() {
     await api(`/workspaces/${workspaceId}/memory/promotions/${id}/reject`, {
       method: "POST",
       body: { reviewer: "human:web" }
+    });
+    await refreshWorkspaceData();
+  }
+
+  function beginCandidateEdit(candidate: MemoryCandidate) {
+    setEditingCandidateId(candidate.id);
+    setCandidateDraft({
+      memory_text: candidate.memory_text,
+      type: candidate.type,
+      scope: candidate.scope,
+      tags: candidate.node.tags.join(", "),
+      reason: candidate.reason ?? "",
+      promotion_target_path: candidate.promotion_target_path ?? "",
+      project_slug: candidate.node.project_slug ?? "",
+      repo_path: candidate.node.repo_path ?? ""
+    });
+  }
+
+  function cancelCandidateEdit() {
+    setEditingCandidateId("");
+    setCandidateDraft(emptyCandidateDraft());
+  }
+
+  async function saveCandidateEdit(id: string) {
+    if (!workspaceId) return;
+    const body = {
+      memory_text: candidateDraft.memory_text,
+      detail: candidateDraft.memory_text,
+      type: candidateDraft.type,
+      scope: candidateDraft.scope,
+      tags: splitTags(candidateDraft.tags),
+      reason: candidateDraft.reason,
+      promotion_target_path: candidateDraft.promotion_target_path.trim() || undefined,
+      project_slug: candidateDraft.scope === "project" ? candidateDraft.project_slug.trim() || undefined : undefined,
+      repo_path: candidateDraft.scope === "repo" ? candidateDraft.repo_path.trim() || undefined : undefined,
+      actor: "human:web"
+    };
+    await api(`/workspaces/${workspaceId}/memory/candidates/${id}/update`, {
+      method: "POST",
+      body
+    });
+    cancelCandidateEdit();
+    await refreshWorkspaceData();
+  }
+
+  async function approveCandidate(id: string, targetPath?: string) {
+    if (!workspaceId) return;
+    const candidate = candidates.find((item) => item.id === id);
+    const promotionTarget =
+      targetPath ??
+      candidate?.promotion_target_path ??
+      window.prompt("Promotion target path", defaultTargetPathForCandidate(candidate));
+    if (!promotionTarget) return;
+    await api(`/workspaces/${workspaceId}/memory/candidates/${id}/approve`, {
+      method: "POST",
+      body: { reviewer: "human:web", apply: true, promotion_target_path: promotionTarget }
+    });
+    await refreshWorkspaceData();
+  }
+
+  async function rejectCandidate(id: string) {
+    if (!workspaceId) return;
+    const comment = window.prompt("Rejection reason", "Not durable memory.");
+    if (comment === null) return;
+    await api(`/workspaces/${workspaceId}/memory/candidates/${id}/reject`, {
+      method: "POST",
+      body: { reviewer: "human:web", comment }
+    });
+    await refreshWorkspaceData();
+  }
+
+  async function markCandidateStatus(id: string, status: "stale" | "conflicted") {
+    if (!workspaceId) return;
+    const reason = window.prompt(
+      status === "stale" ? "Why is this stale?" : "Why is this conflicted?",
+      status === "stale" ? "Superseded by newer project context." : "Conflicts with another memory."
+    );
+    if (!reason) return;
+    await api(`/workspaces/${workspaceId}/memory/candidates/${id}/update`, {
+      method: "POST",
+      body: {
+        status,
+        reason,
+        actor: "human:web"
+      }
     });
     await refreshWorkspaceData();
   }
@@ -903,6 +1090,10 @@ export function App() {
                 <ClipboardCheck size={14} />
                 Runs
               </button>
+              <button className={`tab-button ${activePanel === "candidates" ? "is-active" : ""}`} onClick={() => setActivePanel("candidates")}>
+                <Inbox size={14} />
+                Review
+              </button>
               <button className={`tab-button ${activePanel === "trust" ? "is-active" : ""}`} onClick={() => setActivePanel("trust")}>
                 <ShieldCheck size={14} />
                 Trust
@@ -1166,13 +1357,39 @@ export function App() {
               </section>
             )}
 
+            {activePanel === "candidates" && (
+              <CandidateReviewPanel
+                candidates={filteredCandidates}
+                allCandidates={candidates}
+                selectedWorkspaceName={selectedWorkspace?.name ?? "workspace"}
+                statusFilter={candidateStatusFilter}
+                scopeFilter={candidateScopeFilter}
+                riskFilter={candidateRiskFilter}
+                projectFilter={candidateProjectFilter}
+                riskFlags={candidateRiskFlags}
+                editingCandidateId={editingCandidateId}
+                draft={candidateDraft}
+                onStatusFilter={setCandidateStatusFilter}
+                onScopeFilter={setCandidateScopeFilter}
+                onRiskFilter={setCandidateRiskFilter}
+                onProjectFilter={setCandidateProjectFilter}
+                onDraftChange={(patch) => setCandidateDraft((current) => ({ ...current, ...patch }))}
+                onBeginEdit={beginCandidateEdit}
+                onCancelEdit={cancelCandidateEdit}
+                onSaveEdit={saveCandidateEdit}
+                onApprove={approveCandidate}
+                onReject={rejectCandidate}
+                onMarkStatus={markCandidateStatus}
+              />
+            )}
+
             {activePanel === "trust" && (
               <section className="grid gap-3">
                 <PanelSubhead icon={<ShieldCheck size={14} />} title="Trust Overview" />
                 <div className="metric-grid">
                   <Metric label="health" value={health ? `${health.overall_score}` : "-"} />
                   <Metric label="source" value={health ? `${health.source_coverage}%` : "-"} />
-                  <Metric label="pending" value={String(promotions.filter((item) => item.status === "pending").length)} />
+                  <Metric label="candidates" value={String(candidates.filter((item) => item.status === "candidate").length)} />
                   <Metric label="trusted" value={String(trustCounts.trusted ?? 0)} />
                 </div>
 
@@ -1195,6 +1412,42 @@ export function App() {
                     </div>
                   </section>
                 )}
+
+                <section className="trust-block">
+                  <PanelSubhead icon={<ClipboardCheck size={14} />} title="Candidate Review" />
+                  <div className="mt-2 space-y-1.5">
+                    {candidates.length === 0 && <EmptyLine>No candidates</EmptyLine>}
+                    {candidates.slice(0, 8).map((candidate) => (
+                      <article className="queue-row" key={candidate.id}>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="pill">{candidate.status}</span>
+                            <span className="truncate">{candidate.node.summary}</span>
+                          </div>
+                          <div className="mt-1 truncate font-mono text-[11px] text-[var(--muted)]">
+                            {candidate.source_refs[0]?.source_path}
+                            {candidate.promotion_target_path ? ` -> ${candidate.promotion_target_path}` : ""}
+                          </div>
+                          {candidate.risk_flags.length > 0 && (
+                            <div className="mt-1 font-mono text-[11px] text-[var(--muted)]">
+                              {candidate.risk_flags.join(", ")}
+                            </div>
+                          )}
+                        </div>
+                        {candidate.status === "candidate" && candidate.promotion_target_path && (
+                          <div className="flex gap-1">
+                            <button className="secondary-button h-8" onClick={() => approveCandidate(candidate.id)}>
+                              <Check size={14} />
+                            </button>
+                            <button className="secondary-button h-8" onClick={() => rejectCandidate(candidate.id)}>
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                </section>
 
                 <section className="trust-block">
                   <PanelSubhead icon={<ClipboardCheck size={14} />} title="Promotion Queue" />
@@ -1405,6 +1658,278 @@ export function App() {
   );
 }
 
+function CandidateReviewPanel({
+  candidates,
+  allCandidates,
+  selectedWorkspaceName,
+  statusFilter,
+  scopeFilter,
+  riskFilter,
+  projectFilter,
+  riskFlags,
+  editingCandidateId,
+  draft,
+  onStatusFilter,
+  onScopeFilter,
+  onRiskFilter,
+  onProjectFilter,
+  onDraftChange,
+  onBeginEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onApprove,
+  onReject,
+  onMarkStatus
+}: {
+  candidates: MemoryCandidate[];
+  allCandidates: MemoryCandidate[];
+  selectedWorkspaceName: string;
+  statusFilter: string;
+  scopeFilter: string;
+  riskFilter: string;
+  projectFilter: string;
+  riskFlags: string[];
+  editingCandidateId: string;
+  draft: CandidateDraft;
+  onStatusFilter: (value: string) => void;
+  onScopeFilter: (value: string) => void;
+  onRiskFilter: (value: string) => void;
+  onProjectFilter: (value: string) => void;
+  onDraftChange: (patch: Partial<CandidateDraft>) => void;
+  onBeginEdit: (candidate: MemoryCandidate) => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (candidateId: string) => void;
+  onApprove: (candidateId: string, targetPath?: string) => void;
+  onReject: (candidateId: string) => void;
+  onMarkStatus: (candidateId: string, status: "stale" | "conflicted") => void;
+}) {
+  const pendingCount = allCandidates.filter((candidate) => ["observed", "candidate", "duplicate", "conflicted"].includes(candidate.status)).length;
+
+  return (
+    <section className="grid gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <PanelSubhead icon={<Inbox size={14} />} title="Memory Candidates" />
+        <span className="counter">{pendingCount}</span>
+      </div>
+
+      <div className="candidate-filter-grid">
+        <select className="control h-9" value={statusFilter} onChange={(event) => onStatusFilter(event.target.value)}>
+          <option value="all">all status</option>
+          {candidateStatusOptions.map((status) => (
+            <option key={status} value={status}>
+              {status}
+            </option>
+          ))}
+        </select>
+        <select className="control h-9" value={scopeFilter} onChange={(event) => onScopeFilter(event.target.value)}>
+          <option value="all">all scope</option>
+          {scopeOptions.map((scope) => (
+            <option key={scope} value={scope}>
+              {scope}
+            </option>
+          ))}
+        </select>
+        <select className="control h-9" value={riskFilter} onChange={(event) => onRiskFilter(event.target.value)}>
+          <option value="all">all risk</option>
+          {riskFlags.map((risk) => (
+            <option key={risk} value={risk}>
+              {risk}
+            </option>
+          ))}
+        </select>
+        <input
+          className="control h-9"
+          value={projectFilter}
+          onChange={(event) => onProjectFilter(event.target.value)}
+          placeholder="project, repo, or source"
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-2 text-xs text-[var(--muted)]">
+        <span className="truncate">Workspace: {selectedWorkspaceName}</span>
+        <span className="font-mono">{candidates.length}/{allCandidates.length}</span>
+      </div>
+
+      {allCandidates.length === 0 && (
+        <EmptyLine>Agents can propose memories after runs. Run compilation and archive extraction will place reviewable candidates here.</EmptyLine>
+      )}
+      {allCandidates.length > 0 && candidates.length === 0 && <EmptyLine>No candidates match these filters</EmptyLine>}
+
+      <div className="space-y-2">
+        {candidates.map((candidate) => {
+          const editing = editingCandidateId === candidate.id;
+          const terminal = ["approved", "rejected", "superseded"].includes(candidate.status);
+          const materialRisk = candidate.risk_flags.some((risk) => risk !== "none");
+          return (
+            <article className="candidate-card" key={candidate.id}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="pill">{candidate.status}</span>
+                    <span className="pill">{candidate.type}</span>
+                    <span className="pill">{candidate.scope}</span>
+                    {materialRisk && (
+                      <span className="risk-pill">
+                        <AlertTriangle size={12} />
+                        risk
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-5">{candidate.memory_text}</p>
+                </div>
+                <span className="score">{candidate.confidence.toFixed(2)}</span>
+              </div>
+
+              {editing ? (
+                <div className="candidate-edit-grid">
+                  <label>
+                    <span>Memory</span>
+                    <textarea
+                      className="control min-h-28 w-full py-2"
+                      value={draft.memory_text}
+                      onChange={(event) => onDraftChange({ memory_text: event.target.value })}
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label>
+                      <span>Type</span>
+                      <select className="control h-9 w-full" value={draft.type} onChange={(event) => onDraftChange({ type: event.target.value })}>
+                        {memoryTypeOptions.map((type) => (
+                          <option key={type} value={type}>
+                            {type}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>Scope</span>
+                      <select className="control h-9 w-full" value={draft.scope} onChange={(event) => onDraftChange({ scope: event.target.value })}>
+                        {scopeOptions.map((scope) => (
+                          <option key={scope} value={scope}>
+                            {scope}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label>
+                      <span>Project</span>
+                      <input
+                        className="control h-9 w-full"
+                        value={draft.project_slug}
+                        onChange={(event) => onDraftChange({ project_slug: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      <span>Repo</span>
+                      <input
+                        className="control h-9 w-full"
+                        value={draft.repo_path}
+                        onChange={(event) => onDraftChange({ repo_path: event.target.value })}
+                      />
+                    </label>
+                  </div>
+                  <label>
+                    <span>Tags</span>
+                    <input
+                      className="control h-9 w-full"
+                      value={draft.tags}
+                      onChange={(event) => onDraftChange({ tags: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    <span>Target path</span>
+                    <input
+                      className="control h-9 w-full font-mono text-xs"
+                      value={draft.promotion_target_path}
+                      onChange={(event) => onDraftChange({ promotion_target_path: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    <span>Reason</span>
+                    <input
+                      className="control h-9 w-full"
+                      value={draft.reason}
+                      onChange={(event) => onDraftChange({ reason: event.target.value })}
+                    />
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button className="primary-button h-8" onClick={() => onSaveEdit(candidate.id)}>
+                      <Save size={14} />
+                      Save
+                    </button>
+                    <button className="secondary-button h-8" onClick={onCancelEdit}>
+                      <X size={14} />
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <MetaGrid
+                    items={[
+                      ["target", candidate.promotion_target_path ?? "required before approval"],
+                      ["created_by", candidate.created_by],
+                      ["created_at", new Date(candidate.created_at).toLocaleString()],
+                      ["reason", candidate.reason ?? "none"],
+                      ["project", candidate.node.project_slug ?? "none"],
+                      ["repo", candidate.node.repo_path ?? "none"]
+                    ]}
+                  />
+                  <TagList tags={candidate.node.tags} />
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {(candidate.risk_flags.length ? candidate.risk_flags : ["none"]).map((risk) => (
+                      <span className={risk === "none" ? "pill" : "risk-pill"} key={risk}>
+                        {risk !== "none" && <AlertTriangle size={12} />}
+                        {risk}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {candidate.source_refs.map((source, index) => (
+                      <div className="source-ref-row" key={`${source.source_path}-${index}`}>
+                        <span className="truncate">{source.source_path}</span>
+                        <span className="truncate">{source.raw_ref}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <div className="candidate-action-row">
+                <button className="secondary-button h-8" onClick={() => onBeginEdit(candidate)}>
+                  <Pencil size={14} />
+                  Edit
+                </button>
+                <button
+                  className="primary-button h-8"
+                  onClick={() => onApprove(candidate.id, candidate.promotion_target_path ?? undefined)}
+                  disabled={terminal}
+                  title="Approve through the candidate promotion API"
+                >
+                  <Check size={14} />
+                  Approve
+                </button>
+                <button className="secondary-button h-8" onClick={() => onReject(candidate.id)} disabled={candidate.status === "rejected"}>
+                  <Ban size={14} />
+                  Reject
+                </button>
+                <button className="secondary-button h-8" onClick={() => onMarkStatus(candidate.id, "stale")} disabled={candidate.status === "stale"}>
+                  Stale
+                </button>
+                <button className="secondary-button h-8" onClick={() => onMarkStatus(candidate.id, "conflicted")} disabled={candidate.status === "conflicted"}>
+                  Conflict
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function ResultList({
   results,
   empty,
@@ -1564,6 +2089,40 @@ function IconButton({
 
 function EmptyLine({ children }: { children: React.ReactNode }) {
   return <div className="rounded-md border border-dashed border-[var(--line)] px-3 py-4 text-sm text-[var(--muted)]">{children}</div>;
+}
+
+function emptyCandidateDraft(): CandidateDraft {
+  return {
+    memory_text: "",
+    type: "fact",
+    scope: "workspace",
+    tags: "",
+    reason: "",
+    promotion_target_path: "",
+    project_slug: "",
+    repo_path: ""
+  };
+}
+
+function splitTags(value: string): string[] {
+  return value
+    .split(",")
+    .map((tag) => tag.trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function defaultTargetPathForCandidate(candidate: MemoryCandidate | undefined): string {
+  if (!candidate) return "/memory/reviewed.md";
+  if (candidate.promotion_target_path) return candidate.promotion_target_path;
+  if (candidate.scope === "project" && candidate.node.project_slug && candidate.type === "decision") {
+    return `/projects/${candidate.node.project_slug}/decisions.md`;
+  }
+  if (candidate.scope === "project" && candidate.node.project_slug && candidate.type === "constraint") {
+    return `/projects/${candidate.node.project_slug}/constraints.md`;
+  }
+  if (candidate.type === "preference") return "/preferences.md";
+  return "/memory/reviewed.md";
 }
 
 function trustSummary(nodes: MemoryNode[]): Record<string, number> {

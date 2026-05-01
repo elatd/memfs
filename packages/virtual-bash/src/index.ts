@@ -5,6 +5,7 @@ import {
   type BriefResponse,
   type CompileRunResponse,
   type MemoryHealthReport,
+  type MemoryGrepResponse,
   type MemoryPromotion,
   type RecallResponse,
   type SyncStatus
@@ -29,12 +30,6 @@ export interface VirtualBashOptions {
   actor?: string;
   ingestWrites?: boolean;
   allowProtectedWrite?: boolean;
-}
-
-interface LiteralMatch {
-  path: string;
-  line: number;
-  text: string;
 }
 
 export class MemoryFsShell {
@@ -63,7 +58,7 @@ export class MemoryFsShell {
       case "mkdir":
         return this.mkdir(requiredArg(args[0], "mkdir requires a path."));
       case "grep":
-        return this.grep(requiredArg(args[0], "grep requires a query."));
+        return this.grep(args);
       case "sgrep":
         return this.sgrep(requiredArg(args[0], "sgrep requires a query."));
       case "recall":
@@ -150,20 +145,19 @@ export class MemoryFsShell {
     return result("mkdir", { path: normalizedPath }, `Directory marker accepted for ${normalizedPath}`);
   }
 
-  private async grep(query: string): Promise<ShellExecResult> {
-    const literalMatches = await this.literalMatches(query);
-    const search = await this.options.memoryfs.searchMemory(this.options.workspaceId, query, {
-      include_detail: true,
-      include_raw: false
+  private async grep(args: string[]): Promise<ShellExecResult<MemoryGrepResponse>> {
+    const parsed = parseGrepArgs(args);
+    const query = requiredArg(parsed.query.trim(), "grep requires a query.");
+    const search = await this.options.memoryfs.grepMemory(this.options.workspaceId, query, {
+      mode: parsed.mode,
+      trust_min: parsed.trust_min,
+	      scope: parsed.scope,
+	      include_runs: parsed.include_runs,
+	      include_sources: parsed.include_sources,
+	      include_stale: parsed.include_stale,
+	      limit: parsed.limit
     });
-    return result(
-      "grep",
-      { literal_matches: literalMatches, memory: search.results },
-      [
-        ...literalMatches.map((match) => `${match.path}:${match.line}:${match.text}`),
-        ...search.results.map((item) => `${item.source_path} [${item.score.toFixed(2)}] ${item.summary}`)
-      ].join("\n") || "(no results)"
-    );
+    return result("grep", search, formatGrep(search));
   }
 
   private async sgrep(query: string): Promise<ShellExecResult<RecallResponse>> {
@@ -237,7 +231,10 @@ export class MemoryFsShell {
 
     if (subcommand === "compile") {
       const runId = requiredArg(args[1], "run compile requires a run id.");
-      const compiled = await this.options.memoryfs.compileRun(this.options.workspaceId, runId, { actor });
+      const compiled = await this.options.memoryfs.compileRun(this.options.workspaceId, runId, {
+        actor,
+        reasoning: args.includes("--reasoning")
+      });
       return result("run", compiled, formatCompileRun(compiled));
     }
 
@@ -333,22 +330,6 @@ export class MemoryFsShell {
       { workspace, file_count: files.length, memory_node_count: nodes.length },
       `workspace: ${workspace.name} (${workspace.id})\nfiles: ${files.length}\nmemory nodes: ${nodes.length}`
     );
-  }
-
-  private async literalMatches(query: string): Promise<LiteralMatch[]> {
-    const matches: LiteralMatch[] = [];
-    for (const file of this.options.memoryfs.listFiles(this.options.workspaceId)) {
-      if (file.path.toLowerCase().includes(query.toLowerCase())) {
-        matches.push({ path: file.path, line: 0, text: "(path match)" });
-      }
-      const content = (await this.options.memoryfs.readFile(this.options.workspaceId, file.path)).content;
-      content.split(/\n/).forEach((line, index) => {
-        if (line.toLowerCase().includes(query.toLowerCase())) {
-          matches.push({ path: file.path, line: index + 1, text: line });
-        }
-      });
-    }
-    return matches;
   }
 }
 
@@ -454,6 +435,81 @@ function optionValue(args: string[], flag: string): string | undefined {
   return args[index + 1];
 }
 
+function parseGrepArgs(args: string[]): {
+  query: string;
+  mode: "literal" | "semantic" | "hybrid";
+  scope?: string[];
+  trust_min?: "ephemeral" | "agent_generated" | "source_backed" | "reviewed" | "trusted" | "superseded" | "rejected";
+	  include_runs?: boolean;
+	  include_sources?: boolean;
+	  include_stale?: boolean;
+	  limit?: number;
+} {
+  const queryParts: string[] = [];
+  const scope: string[] = [];
+  let mode: "literal" | "semantic" | "hybrid" = "hybrid";
+  let trustMin: "ephemeral" | "agent_generated" | "source_backed" | "reviewed" | "trusted" | "superseded" | "rejected" | undefined;
+	  let includeRuns: boolean | undefined;
+	  let includeSources: boolean | undefined;
+	  let includeStale: boolean | undefined;
+	  let limit: number | undefined;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
+    if (arg === "--literal" || arg === "-F") {
+      mode = "literal";
+    } else if (arg === "--semantic") {
+      mode = "semantic";
+    } else if (arg === "--hybrid") {
+      mode = "hybrid";
+    } else if (arg === "--trusted-only") {
+      trustMin = "reviewed";
+    } else if (arg === "--trust-min") {
+      trustMin = args[++index] as typeof trustMin;
+    } else if (arg === "--include-runs") {
+      includeRuns = true;
+    } else if (arg === "--no-runs") {
+      includeRuns = false;
+    } else if (arg === "--include-sources") {
+      includeSources = true;
+	    } else if (arg === "--no-sources") {
+	      includeSources = false;
+	    } else if (arg === "--include-stale") {
+	      includeStale = true;
+	    } else if (arg === "--scope") {
+      const value = args[++index];
+      if (value) scope.push(...value.split(",").map((entry) => entry.trim()).filter(Boolean));
+    } else if (arg === "--limit") {
+      const value = Number(args[++index]);
+      if (Number.isFinite(value)) limit = value;
+    } else {
+      queryParts.push(arg);
+    }
+  }
+
+  return {
+    query: queryParts.join(" "),
+    mode,
+    scope: scope.length ? scope : undefined,
+	    trust_min: trustMin,
+	    include_runs: includeRuns,
+	    include_sources: includeSources,
+	    include_stale: includeStale,
+	    limit
+  };
+}
+
+function formatGrep(response: MemoryGrepResponse): string {
+  return response.results
+    .map((item) => {
+      const location = item.line ? `${item.path}:${item.line}` : item.path;
+      const node = item.node_id ? ` node=${item.node_id}` : "";
+      const raw = item.raw_ref ? `\n  raw_ref: ${item.raw_ref}` : "";
+      return `${location} [${item.score.toFixed(2)} ${item.match_type} trust=${item.trust ?? "unknown"}${node}]\n  ${item.snippet}${raw}`;
+    })
+    .join("\n") || "(no results)";
+}
+
 function formatRun(run: AgentRun): string {
   return `${run.id} ${run.status} ${run.run_path}\n  ${run.title}`;
 }
@@ -462,6 +518,7 @@ function formatCompileRun(compiled: CompileRunResponse): string {
   return [
     compiled.summary,
     `candidate_nodes: ${compiled.candidate_nodes.length}`,
+    `reasoning_candidates: ${compiled.reasoning_candidates.length}`,
     `suggested_promotions: ${compiled.suggested_promotions.length}`,
     `contradictions: ${compiled.contradictions.length}`,
     compiled.followups.length ? `followups: ${compiled.followups.join("; ")}` : ""

@@ -20,6 +20,22 @@ Trust levels:
 - `superseded`
 - `rejected`
 
-Normal recall excludes `pending` and `rejected` nodes. Rejected memory is retrievable only with `include_rejected=true`; trust fields are shown only with `include_trust=true`.
+Normal recall excludes `pending`, candidate-like, `rejected`, `stale`, `conflicted`, and `superseded` nodes. Rejected memory is retrievable only with `include_rejected=true`; stale, conflicted, and superseded memory is retrievable for audit with `include_stale=true` or `memfs grep --include-stale`. Trust and lifecycle fields are shown in recall packets with `include_trust=true`.
 
-Superseded memories remain queryable for audit and history, but their recall score is reduced. They are marked through graph links and trust metadata, not deleted.
+Superseded memories remain stored for audit and history, but they are not treated as current truth by default. They are marked through graph links, trust metadata, `valid_until`, and lifecycle status, not deleted.
+
+Temporal fields:
+
+- `valid_from`
+- `valid_until`
+- `last_confirmed_at`
+- `last_used_at`
+- `supersedes`
+- `superseded_by`
+- `stale_reason`
+
+Review actions update these fields and write audit events:
+
+- `memfs memory mark-stale <id> --reason "..."`
+- `memfs memory confirm <id>`
+- `memfs memory supersede <old_id> <new_id>`

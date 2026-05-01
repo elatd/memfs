@@ -159,12 +159,19 @@ describe("mount-core", () => {
     await mount.write("/.memfs/recall.query", Buffer.from("mounted writes"));
     const recall = Buffer.from(await mount.read("/.memfs/recall.results.md")).toString("utf8");
     expect(recall).toContain("source_path: /runs/today/result.md");
+    expect(recall).toContain("trust:");
+    expect(recall).toContain("node_id:");
     expect(recall).toContain("raw_ref:");
+    expect(recall).toContain("Raw source content is not returned here");
     expect(recall).toContain("tags:");
 
     await mount.write("/.memfs/search.query", Buffer.from("auditable"));
     const search = Buffer.from(await mount.read("/.memfs/search.results.md")).toString("utf8");
     expect(search).toContain("source_path: /runs/today/result.md");
+    expect(search).toContain("trust:");
+    expect(search).toContain("node_id:");
+    expect(search).toContain("raw_ref:");
+    expect(search).toContain("Raw source content is not returned here");
     const status = JSON.parse(Buffer.from(await mount.read("/.memfs/status.json")).toString("utf8")) as {
       lastRecallAt: string | null;
       lastSearchAt: string | null;
@@ -174,6 +181,32 @@ describe("mount-core", () => {
     const auditEvents = memoryfs.listAuditEvents(workspaceId);
     expect(auditEvents.some((event) => event.event_type === "mount.recall.query")).toBe(true);
     expect(auditEvents.some((event) => event.event_type === "mount.search.query")).toBe(true);
+  });
+
+  it("runs pre-task briefs through control query files", async () => {
+    await memoryfs.writeFile(workspaceId, "/projects/auth/decisions.md", "Decision: Mounted briefs should remember OAuth refresh tokens stay server-side.", {
+      ingest: true,
+      allow_protected_write: true
+    });
+    const mount = testMount("read-write");
+
+    await mount.write("/.memfs/brief.query", Buffer.from("Fix OAuth refresh token flow"));
+    const brief = Buffer.from(await mount.read("/.memfs/brief.results.md")).toString("utf8");
+    const status = JSON.parse(Buffer.from(await mount.read("/.memfs/status.json")).toString("utf8")) as {
+      lastBriefQuery: string | null;
+      lastBriefAt: string | null;
+    };
+
+    expect(brief).toContain("Brief results");
+    expect(brief).toContain("source_path: /projects/auth/decisions.md");
+    expect(brief).toContain("trust:");
+    expect(brief).toContain("score:");
+    expect(brief).toContain("node_id:");
+    expect(brief).toContain("raw_ref:");
+    expect(brief).toContain("Raw source content is not returned here");
+    expect(status.lastBriefQuery).toBe("Fix OAuth refresh token flow");
+    expect(status.lastBriefAt).toBeTruthy();
+    expect(memoryfs.listAuditEvents(workspaceId).some((event) => event.event_type === "mount.brief.query")).toBe(true);
   });
 
   it("keeps recall query results scoped to one mount session", async () => {
@@ -244,11 +277,14 @@ describe("mount-core", () => {
       "recall.results.md",
       "search.query",
       "search.results.md",
+      "brief.query",
+      "brief.results.md",
       "audit.md",
       "health.md"
     ]);
     const readme = Buffer.from(await mount.read("/.memfs/README.md")).toString("utf8");
     expect(readme).toContain("echo \"What should I remember");
+    expect(readme).toContain("brief.query");
     const status = JSON.parse(Buffer.from(await mount.read("/.memfs/status.json")).toString("utf8")) as {
       workspaceId: string;
       workspaceName: string;

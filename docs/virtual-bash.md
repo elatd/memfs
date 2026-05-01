@@ -34,6 +34,8 @@ Supported commands:
 - `raw <node_id>`
 - `status`
 
+`grep` maps to hybrid memory grep by default. Use `--literal`, `--semantic`, `--hybrid`, scope flags, or `--include-stale` for stale/superseded audit searches.
+
 Each call returns:
 
 ```ts
