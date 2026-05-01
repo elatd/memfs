@@ -1,5 +1,5 @@
 import cors from "@fastify/cors";
-import { MemoryFS, MemoryFSError, type MemoryRelationType, type PromoteMemoryRequest, type RecallOptions, type SyncEvent } from "@memoryfs/core";
+import { MemoryFS, MemoryFSError, type ArchiveEntryType, type MemoryGrepOptions, type MemoryRelationType, type PromoteMemoryRequest, type RecallOptions, type SyncEvent } from "@memoryfs/core";
 import dotenv from "dotenv";
 import Fastify, { type FastifyRequest } from "fastify";
 import { dirname, resolve } from "node:path";
@@ -164,10 +164,77 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       include_detail?: boolean;
       include_raw?: boolean;
       project_hint?: string;
+      scope?: RecallOptions["scope"];
+      project_id?: string;
+      project_slug?: string;
+      repo_id?: string;
+      repo_path?: string;
+      session_id?: string;
+      agent_id?: string;
+      contact_id?: string;
       run_id?: string;
+      include_related?: boolean;
+      include_stale?: boolean;
       log_memory_usage?: boolean;
     };
     return memoryfs.searchMemory(id, body.query ?? "", body);
+  });
+
+  app.post("/workspaces/:id/memory/grep", async (request) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as MemoryGrepOptions & { query?: string };
+    return memoryfs.grepMemory(id, body.query ?? "", body);
+  });
+
+  app.get("/workspaces/:id/archive", async (request) => {
+    const { id } = request.params as { id: string };
+    return memoryfs.archive.list(id);
+  });
+
+  app.post("/workspaces/:id/archive/import", async (request) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as {
+      content?: string;
+      title?: string;
+      archive_type?: ArchiveEntryType;
+      actor?: string;
+      metadata?: Record<string, unknown>;
+    };
+    return memoryfs.archive.importText(id, {
+      content: body.content ?? "",
+      title: body.title,
+      archive_type: body.archive_type,
+      actor: body.actor ?? actorFromRequest(request) ?? "agent:api",
+      metadata: body.metadata
+    });
+  });
+
+  app.post("/workspaces/:id/archive/search", async (request) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as MemoryGrepOptions & { query?: string };
+    return memoryfs.grepMemory(id, body.query ?? "", {
+      mode: body.mode ?? "hybrid",
+      scope: body.scope ?? ["archive"],
+      trust_min: body.trust_min,
+      include_runs: body.include_runs,
+      include_sources: body.include_sources ?? true,
+      limit: body.limit ?? 20,
+      project_hint: body.project_hint
+    });
+  });
+
+  app.post("/workspaces/:id/archive/:archive_id/extract", async (request) => {
+    const { id, archive_id } = request.params as { id: string; archive_id: string };
+    const body = request.body as { actor?: string; limit?: number };
+    return memoryfs.archive.extractToMemoryCandidates(id, archive_id, {
+      actor: body.actor ?? actorFromRequest(request) ?? "agent:api",
+      limit: body.limit
+    });
+  });
+
+  app.get("/workspaces/:id/archive/:archive_id", async (request) => {
+    const { id, archive_id } = request.params as { id: string; archive_id: string };
+    return memoryfs.archive.read(id, archive_id);
   });
 
   app.post("/workspaces/:id/memory/recall", async (request) => {
@@ -178,7 +245,17 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       include_detail?: boolean;
       include_raw?: boolean;
       project_hint?: string;
+      scope?: RecallOptions["scope"];
+      project_id?: string;
+      project_slug?: string;
+      repo_id?: string;
+      repo_path?: string;
+      session_id?: string;
+      agent_id?: string;
+      contact_id?: string;
       run_id?: string;
+      include_related?: boolean;
+      include_stale?: boolean;
       log_memory_usage?: boolean;
     };
     return memoryfs.recallMemory(id, body.query ?? "", body);
@@ -216,6 +293,31 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     return memoryfs.getMemoryNodeLinks(id, node_id);
   });
 
+  app.get("/workspaces/:id/memory/graph/nodes/:node_id", async (request) => {
+    const { id, node_id } = request.params as { id: string; node_id: string };
+    return memoryfs.getMemoryGraphNode(id, node_id);
+  });
+
+  app.get("/workspaces/:id/memory/graph/nodes/:node_id/related", async (request) => {
+    const { id, node_id } = request.params as { id: string; node_id: string };
+    const query = request.query as { depth?: string; limit?: string; include_stale?: string; relation_types?: string };
+    return memoryfs.findRelatedMemories(id, node_id, {
+      depth: query.depth ? Number(query.depth) : undefined,
+      limit: query.limit ? Number(query.limit) : undefined,
+      include_stale: query.include_stale === "true",
+      relation_types: query.relation_types ? query.relation_types.split(",").map((entry) => entry.trim()) as MemoryRelationType[] : undefined
+    });
+  });
+
+  app.get("/workspaces/:id/memory/graph/path", async (request) => {
+    const { id } = request.params as { id: string };
+    const query = request.query as { from_node_id?: string; to_node_id?: string; max_depth?: string; relation_types?: string };
+    return memoryfs.explainRelationshipPath(id, query.from_node_id ?? "", query.to_node_id ?? "", {
+      max_depth: query.max_depth ? Number(query.max_depth) : undefined,
+      relation_types: query.relation_types ? query.relation_types.split(",").map((entry) => entry.trim()) as MemoryRelationType[] : undefined
+    });
+  });
+
   app.post("/workspaces/:id/memory/nodes/:node_id/links", async (request) => {
     const { id, node_id } = request.params as { id: string; node_id: string };
     const body = request.body as {
@@ -229,6 +331,71 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       confidence: body.confidence,
       reason: body.reason,
       actor: body.actor ?? "human:web"
+    });
+  });
+
+  app.post("/workspaces/:id/memory/graph/links", async (request) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as {
+      from_node_id?: string;
+      to_node_id?: string;
+      from_type?: "memory_node" | "file" | "run" | "candidate" | "reasoning_memory";
+      from_id?: string;
+      to_type?: "memory_node" | "file" | "run" | "candidate" | "reasoning_memory";
+      to_id?: string;
+      relation_type?: MemoryRelationType;
+      confidence?: number;
+      reason?: string;
+      source_ref?: string | null;
+      actor?: string;
+    };
+    return memoryfs.createGraphEdge(id, {
+      from_node_id: body.from_node_id,
+      to_node_id: body.to_node_id,
+      from_type: body.from_type,
+      from_id: body.from_id,
+      to_type: body.to_type,
+      to_id: body.to_id,
+      relation_type: body.relation_type ?? "related_to",
+      confidence: body.confidence,
+      reason: body.reason,
+      source_ref: body.source_ref,
+      actor: body.actor ?? actorFromRequest(request) ?? "human:web"
+    });
+  });
+
+  app.delete("/workspaces/:id/memory/graph/links/:edge_id", async (request) => {
+    const { id, edge_id } = request.params as { id: string; edge_id: string };
+    const query = request.query as { actor?: string };
+    const body = request.body as { actor?: string } | undefined;
+    return memoryfs.deleteGraphEdge(id, edge_id, {
+      actor: query.actor ?? body?.actor ?? actorFromRequest(request) ?? "human:web"
+    });
+  });
+
+  app.post("/workspaces/:id/memory/nodes/:node_id/mark-stale", async (request) => {
+    const { id, node_id } = request.params as { id: string; node_id: string };
+    const body = request.body as { reason?: string; actor?: string };
+    return memoryfs.markMemoryStale(id, node_id, {
+      reason: body.reason ?? "Marked stale.",
+      actor: body.actor ?? actorFromRequest(request) ?? "human:web"
+    });
+  });
+
+  app.post("/workspaces/:id/memory/nodes/:node_id/confirm", async (request) => {
+    const { id, node_id } = request.params as { id: string; node_id: string };
+    const body = request.body as { actor?: string };
+    return memoryfs.confirmMemory(id, node_id, {
+      actor: body.actor ?? actorFromRequest(request) ?? "human:web"
+    });
+  });
+
+  app.post("/workspaces/:id/memory/nodes/:old_node_id/supersede/:new_node_id", async (request) => {
+    const { id, old_node_id, new_node_id } = request.params as { id: string; old_node_id: string; new_node_id: string };
+    const body = request.body as { reason?: string; actor?: string };
+    return memoryfs.supersedeMemory(id, old_node_id, new_node_id, {
+      reason: body.reason,
+      actor: body.actor ?? actorFromRequest(request) ?? "human:web"
     });
   });
 
@@ -251,8 +418,10 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       include_why?: boolean;
       include_contradictions?: boolean;
       include_links?: boolean;
+      include_related?: boolean;
       include_trust?: boolean;
       include_rejected?: boolean;
+      include_stale?: boolean;
       run_id?: string;
       log_memory_usage?: boolean;
     };
@@ -264,24 +433,46 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     const body = request.body as {
       task?: string;
       project_hint?: string;
+      scope?: RecallOptions["scope"];
+      project_id?: string;
+      project_slug?: string;
+      repo_id?: string;
+      repo_path?: string;
+      session_id?: string;
+      agent_id?: string;
+      contact_id?: string;
+      run_id?: string;
+      files?: string[];
       actor?: string;
       mode?: RecallOptions["mode"];
       include_recent_runs?: boolean;
       include_open_questions?: boolean;
       include_contradictions?: boolean;
       include_raw?: boolean;
+      include_candidates?: boolean;
       limit?: number;
       create_run?: boolean;
     };
     return memoryfs.createBrief(id, {
       task: body.task ?? "",
       project_hint: body.project_hint,
+      scope: body.scope as never,
+      project_id: body.project_id,
+      project_slug: body.project_slug,
+      repo_id: body.repo_id,
+      repo_path: body.repo_path,
+      session_id: body.session_id,
+      agent_id: body.agent_id,
+      contact_id: body.contact_id,
+      run_id: body.run_id,
+      files: body.files,
       actor: body.actor ?? actorFromRequest(request),
       mode: body.mode,
       include_recent_runs: body.include_recent_runs,
       include_open_questions: body.include_open_questions,
       include_contradictions: body.include_contradictions,
       include_raw: body.include_raw,
+      include_candidates: body.include_candidates,
       limit: body.limit,
       create_run: body.create_run
     });
@@ -311,6 +502,12 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     };
   });
 
+  app.post("/workspaces/:id/runs/:run_id/start", async (request) => {
+    const { id, run_id } = request.params as { id: string; run_id: string };
+    const body = request.body as { actor?: string };
+    return memoryfs.startRun(id, run_id, body.actor ?? actorFromRequest(request) ?? "agent:api");
+  });
+
   app.post("/workspaces/:id/runs/:run_id/events", async (request) => {
     const { id, run_id } = request.params as { id: string; run_id: string };
     const body = request.body as { event_type?: string; payload?: unknown };
@@ -325,8 +522,13 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
 
   app.post("/workspaces/:id/runs/:run_id/compile", async (request) => {
     const { id, run_id } = request.params as { id: string; run_id: string };
-    const body = request.body as { actor?: string; create_promotions?: boolean };
+    const body = request.body as { actor?: string; create_promotions?: boolean; reasoning?: boolean };
     return memoryfs.compileRun(id, run_id, body);
+  });
+
+  app.get("/workspaces/:id/runs/:run_id/lessons", async (request) => {
+    const { id, run_id } = request.params as { id: string; run_id: string };
+    return memoryfs.listRunLessons(id, run_id);
   });
 
   app.get("/workspaces/:id/runs/:run_id/memory-used", async (request) => {
@@ -354,6 +556,84 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     const { id } = request.params as { id: string };
     const body = request.body as { node_ids?: string[]; reviewer?: string; comment?: string };
     return memoryfs.reviewStaleMemory(id, body);
+  });
+
+  app.get("/workspaces/:id/memory/candidates", async (request) => {
+    const { id } = request.params as { id: string };
+    const query = request.query as {
+      status?: string;
+      duplicates?: string;
+      conflicts?: string;
+      scope?: string | string[];
+      project_slug?: string;
+      repo_path?: string;
+      session_id?: string;
+      agent_id?: string;
+      contact_id?: string;
+      run_id?: string;
+    };
+    return memoryfs.listCandidates(id, {
+      status: query.status as never,
+      duplicates: query.duplicates === "true",
+      conflicts: query.conflicts === "true",
+      scope: query.scope as never,
+      project_slug: query.project_slug,
+      repo_path: query.repo_path,
+      session_id: query.session_id,
+      agent_id: query.agent_id,
+      contact_id: query.contact_id,
+      run_id: query.run_id
+    });
+  });
+
+  app.post("/workspaces/:id/memory/candidates", async (request) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as Parameters<MemoryFS["proposeMemoryCandidate"]>[1];
+    return memoryfs.proposeMemoryCandidate(id, {
+      ...body,
+      actor: body.actor ?? actorFromRequest(request) ?? "agent:api"
+    });
+  });
+
+  app.get("/workspaces/:id/memory/candidates/:candidate_id", async (request) => {
+    const { id, candidate_id } = request.params as { id: string; candidate_id: string };
+    return memoryfs.getCandidate(id, candidate_id);
+  });
+
+  app.post("/workspaces/:id/memory/candidates/:candidate_id/update", async (request) => {
+    const { id, candidate_id } = request.params as { id: string; candidate_id: string };
+    const body = (request.body ?? {}) as Parameters<MemoryFS["updateCandidate"]>[2];
+    return memoryfs.updateCandidate(id, candidate_id, {
+      ...body,
+      actor: body.actor ?? body.reviewer ?? actorFromRequest(request) ?? "human:api"
+    });
+  });
+
+  app.post("/workspaces/:id/memory/candidates/:candidate_id/approve", async (request) => {
+    const { id, candidate_id } = request.params as { id: string; candidate_id: string };
+    const body = (request.body ?? {}) as NonNullable<Parameters<MemoryFS["approveCandidate"]>[2]>;
+    return memoryfs.approveCandidate(id, candidate_id, {
+      ...body,
+      reviewer: body.reviewer ?? actorFromRequest(request) ?? "human:api"
+    });
+  });
+
+  app.post("/workspaces/:id/memory/candidates/:candidate_id/reject", async (request) => {
+    const { id, candidate_id } = request.params as { id: string; candidate_id: string };
+    const body = (request.body ?? {}) as NonNullable<Parameters<MemoryFS["rejectCandidate"]>[2]>;
+    return memoryfs.rejectCandidate(id, candidate_id, {
+      ...body,
+      reviewer: body.reviewer ?? actorFromRequest(request) ?? "human:api"
+    });
+  });
+
+  app.post("/workspaces/:id/memory/candidates/:candidate_id/resolve-conflict", async (request) => {
+    const { id, candidate_id } = request.params as { id: string; candidate_id: string };
+    const body = (request.body ?? {}) as Parameters<MemoryFS["resolveCandidateConflict"]>[2];
+    return memoryfs.resolveCandidateConflict(id, candidate_id, {
+      ...body,
+      actor: body.actor ?? body.reviewer ?? actorFromRequest(request) ?? "human:api"
+    });
   });
 
   app.post("/workspaces/:id/memory/promote", async (request) => {

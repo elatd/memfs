@@ -1,4 +1,4 @@
-import { MemoryFS, normalizeMemoryPath, type AuditEvent, type FileRecord, type MemoryHealthReport, type RecallOptions, type RecallResponse, type Workspace } from "@memoryfs/core";
+import { MemoryFS, normalizeMemoryPath, type AuditEvent, type BriefRequest, type BriefResponse, type FileRecord, type MemoryGrepOptions, type MemoryGrepResponse, type MemoryHealthReport, type RecallOptions, type RecallResponse, type Workspace } from "@memoryfs/core";
 import { MemoryFSClient } from "@memoryfs/sdk";
 import path from "node:path";
 
@@ -23,6 +23,7 @@ export type StructuredMountErrorCode =
   | "MOUNT_WRITE_FAILED"
   | "MOUNT_RECALL_FAILED"
   | "MOUNT_SEARCH_FAILED"
+  | "MOUNT_BRIEF_FAILED"
   | "MOUNT_FUSE_UNAVAILABLE";
 
 export interface MountCoreOptions {
@@ -59,6 +60,8 @@ export interface MountClient {
   deleteFile?(workspaceId: string, filePath: string, options?: { actor?: string; allow_protected_write?: boolean }): Promise<void | unknown>;
   recallMemory?(workspaceId: string, query: string, options?: RecallOptions): Promise<RecallResponse | unknown>;
   searchMemory?(workspaceId: string, query: string, options?: RecallOptions): Promise<RecallResponse | unknown>;
+  grepMemory?(workspaceId: string, query: string, options?: MemoryGrepOptions): Promise<MemoryGrepResponse | unknown>;
+  createBrief?(workspaceId: string, request: BriefRequest): Promise<BriefResponse | unknown>;
   listAuditEvents?(workspaceId: string, limit?: number): AuditEvent[] | Promise<AuditEvent[] | unknown>;
   getMemoryHealth?(workspaceId: string): MemoryHealthReport | Promise<MemoryHealthReport | unknown>;
   recordAuditEvent?(workspaceId: string, actor: string, eventType: string, payload?: unknown): AuditEvent | Promise<AuditEvent | unknown>;
@@ -93,6 +96,8 @@ export interface MountStatus {
   lastSearchQuery: string | null;
   lastRecallAt: string | null;
   lastSearchAt: string | null;
+  lastBriefQuery: string | null;
+  lastBriefAt: string | null;
   requestedTrustLevel: string | null;
   defaultRunFolder: string | null;
   mountedAt: string;
@@ -114,8 +119,11 @@ interface ControlState {
   recallResponse: RecallResponse | null;
   recallUpdatedAt: string | null;
   searchQuery: string;
-  searchResponse: RecallResponse | null;
+  searchResponse: RecallResponse | MemoryGrepResponse | null;
   searchUpdatedAt: string | null;
+  briefQuery: string;
+  briefResponse: BriefResponse | null;
+  briefUpdatedAt: string | null;
 }
 
 export class MountCoreError extends Error {
@@ -161,6 +169,8 @@ export function createCoreMountClient(memoryfs: MemoryFS): MountClient {
     deleteFile: (workspaceId, filePath, options) => memoryfs.deleteFile(workspaceId, filePath, options),
     recallMemory: (workspaceId, query, options) => memoryfs.recallMemory(workspaceId, query, options),
     searchMemory: (workspaceId, query, options) => memoryfs.searchMemory(workspaceId, query, options),
+    grepMemory: (workspaceId, query, options) => memoryfs.grepMemory(workspaceId, query, options),
+    createBrief: (workspaceId, request) => memoryfs.createBrief(workspaceId, request),
     listAuditEvents: (workspaceId, limit) => memoryfs.listAuditEvents(workspaceId, limit),
     getMemoryHealth: (workspaceId) => memoryfs.getMemoryHealth(workspaceId),
     recordAuditEvent: (workspaceId, actor, eventType, payload) => memoryfs.recordAuditEvent(workspaceId, actor, eventType, payload)
@@ -188,6 +198,8 @@ export function createHttpMountClient(options: { baseUrl?: string; client?: Memo
     deleteFile: (workspaceId, filePath, deleteOptions) => client.deleteFile(workspaceId, filePath, deleteOptions),
     recallMemory: (workspaceId, query, recallOptions) => client.recallMemory(workspaceId, query, recallOptions),
     searchMemory: (workspaceId, query, recallOptions) => client.searchMemory(workspaceId, query, recallOptions),
+    grepMemory: (workspaceId, query, grepOptions) => client.grepMemory(workspaceId, query, grepOptions),
+    createBrief: (workspaceId, request) => client.createBrief(workspaceId, request.task, request),
     listAuditEvents: (workspaceId, limit) => client.listAuditEvents(workspaceId, limit),
     getMemoryHealth: (workspaceId) => client.getMemoryHealth(workspaceId),
     recordAuditEvent: (workspaceId, actor, eventType, payload) => client.recordAuditEvent(workspaceId, { actor, event_type: eventType, payload })
@@ -209,7 +221,10 @@ class MemoryFsMountCore implements MountCore {
     recallUpdatedAt: null,
     searchQuery: "",
     searchResponse: null,
-    searchUpdatedAt: null
+    searchUpdatedAt: null,
+    briefQuery: "",
+    briefResponse: null,
+    briefUpdatedAt: null
   };
 
   constructor(private readonly options: MountCoreOptions) {
@@ -389,6 +404,8 @@ class MemoryFsMountCore implements MountCore {
       lastSearchQuery: this.control.searchQuery || null,
       lastRecallAt: this.control.recallUpdatedAt,
       lastSearchAt: this.control.searchUpdatedAt,
+      lastBriefQuery: this.control.briefQuery || null,
+      lastBriefAt: this.control.briefUpdatedAt,
       requestedTrustLevel: this.options.trustLevel ?? null,
       defaultRunFolder: this.options.defaultRunFolder ?? null,
       mountedAt: this.mountedAt,
@@ -470,7 +487,11 @@ class MemoryFsMountCore implements MountCore {
       case "/.memfs/search.query":
         return this.control.searchQuery;
       case "/.memfs/search.results.md":
-        return renderRecallResults("Search results", this.control.searchResponse);
+        return renderSearchResults("Search results", this.control.searchResponse);
+      case "/.memfs/brief.query":
+        return this.control.briefQuery;
+      case "/.memfs/brief.results.md":
+        return renderBriefResults(this.control.briefResponse);
       case "/.memfs/audit.md":
         return this.renderAudit();
       case "/.memfs/health.md":
@@ -489,6 +510,9 @@ class MemoryFsMountCore implements MountCore {
         this.control.recallResponse = asRecallResponse(await this.client.recallMemory(this.options.workspaceId, query, {
           include_detail: true,
           include_raw: false,
+          include_trust: true,
+          include_rejected: false,
+          include_stale: false,
           limit: 8
         }));
       } catch (error) {
@@ -499,19 +523,51 @@ class MemoryFsMountCore implements MountCore {
       return { path: filePath, bytesWritten: bytes.byteLength };
     }
     if (filePath === "/.memfs/search.query") {
-      if (!this.client.searchMemory) throw new MountCoreError("ENOTSUP", "Client does not support memory search.");
+      if (!this.client.grepMemory && !this.client.searchMemory) throw new MountCoreError("ENOTSUP", "Client does not support memory search.");
       this.control.searchQuery = query;
       try {
-        this.control.searchResponse = asRecallResponse(await this.client.searchMemory(this.options.workspaceId, query, {
-          include_detail: true,
-          include_raw: false,
-          limit: 8
-        }));
+        this.control.searchResponse = this.client.grepMemory
+          ? asGrepResponse(await this.client.grepMemory(this.options.workspaceId, query, {
+              mode: "hybrid",
+              include_sources: true,
+              include_runs: true,
+              limit: 8
+            }))
+          : asRecallResponse(await this.client.searchMemory!(this.options.workspaceId, query, {
+              include_detail: true,
+              include_raw: false,
+              limit: 8
+            }));
       } catch (error) {
         throw new MountCoreError("EINVAL", "Mount search query failed.", error, "MOUNT_SEARCH_FAILED");
       }
       await this.recordAudit("mount.search.query", { query, result_count: this.control.searchResponse.results.length });
       this.control.searchUpdatedAt = new Date().toISOString();
+      return { path: filePath, bytesWritten: bytes.byteLength };
+    }
+    if (filePath === "/.memfs/brief.query") {
+      if (!this.client.createBrief) throw new MountCoreError("ENOTSUP", "Client does not support briefs.");
+      this.control.briefQuery = query;
+      try {
+        this.control.briefResponse = asBriefResponse(await this.client.createBrief(this.options.workspaceId, {
+          task: query,
+          actor: this.actor,
+          create_run: false,
+          include_candidates: false,
+          include_raw: false,
+          include_recent_runs: true,
+          include_open_questions: true,
+          include_contradictions: true,
+          limit: 8
+        }));
+      } catch (error) {
+        throw new MountCoreError("EINVAL", "Mount brief query failed.", error, "MOUNT_BRIEF_FAILED");
+      }
+      await this.recordAudit("mount.brief.query", {
+        query,
+        result_count: this.control.briefResponse.memory_results.length
+      });
+      this.control.briefUpdatedAt = new Date().toISOString();
       return { path: filePath, bytesWritten: bytes.byteLength };
     }
     throw new MountCoreError("RESERVED_PATH", `Control file is read-only: ${filePath}`, undefined, "MOUNT_RESERVED_NAMESPACE");
@@ -536,6 +592,13 @@ class MemoryFsMountCore implements MountCore {
       `unresolved_promotion_count: ${health.unresolved_promotion_count}`,
       `orphan_node_count: ${health.orphan_node_count}`,
       `raw_missing_count: ${health.raw_missing_count}`,
+      `low_confidence_count: ${health.low_confidence_count}`,
+      `rejected_node_count: ${health.rejected_node_count}`,
+      `stale_node_count: ${health.stale_node_count}`,
+      `old_node_count: ${health.old_node_count ?? 0}`,
+      `unconfirmed_node_count: ${health.unconfirmed_node_count ?? 0}`,
+      `superseded_node_count: ${health.superseded_node_count ?? 0}`,
+      `conflicted_node_count: ${health.conflicted_node_count ?? 0}`,
       ""
     ].join("\n");
   }
@@ -649,6 +712,39 @@ function asRecallResponse(value: unknown): RecallResponse {
   return { query: "", results: [] };
 }
 
+function asGrepResponse(value: unknown): MemoryGrepResponse {
+  if (value && typeof value === "object" && "results" in value) {
+    return value as MemoryGrepResponse;
+  }
+  return { query: "", mode: "hybrid", workspace_id: "", results: [] };
+}
+
+function asBriefResponse(value: unknown): BriefResponse {
+  if (value && typeof value === "object" && "brief_markdown" in value && "memory_results" in value) {
+    return value as BriefResponse;
+  }
+  return {
+    brief_markdown: "",
+    sections: {
+      facts: [],
+      decisions: [],
+      constraints: [],
+      preferences: [],
+      previous_failures: [],
+      previous_errors: [],
+      successful_patterns: [],
+      reasoning_memories: [],
+      stale_or_conflicted: [],
+      open_questions: [],
+      suggested_files: [],
+      likely_paths: [],
+      suggested_actions: [],
+      warnings: []
+    },
+    memory_results: []
+  };
+}
+
 function isMissing(error: unknown): boolean {
   return error instanceof MountCoreError && error.code === "ENOENT";
 }
@@ -661,11 +757,15 @@ function renderRecallResults(title: string, response: RecallResponse | null): st
     "",
     `Query: ${response.query}`,
     "",
+    rawSourceWarning,
+    "",
     ...response.results.map((result, index) =>
       [
         `## ${index + 1}. ${result.summary}`,
         "",
         `- score: ${result.score.toFixed(3)}`,
+        `- trust: ${result.trust_level ?? "unknown"}`,
+        `- node_id: ${result.node_id}`,
         `- type: ${result.memory_type}`,
         `- tags: ${result.tags.join(", ") || "(none)"}`,
         `- source_path: ${result.source_path}`,
@@ -678,6 +778,72 @@ function renderRecallResults(title: string, response: RecallResponse | null): st
   ].join("\n");
 }
 
+function renderSearchResults(title: string, response: RecallResponse | MemoryGrepResponse | null): string {
+  if (!response) return `# ${title}\n\nNo query has been run.\n`;
+  if (response.results.length === 0) return `# ${title}\n\nQuery: ${response.query}\n\nNo results.\n`;
+  const first = response.results[0] as unknown;
+  if (first && typeof first === "object" && "snippet" in first) {
+    const grep = response as MemoryGrepResponse;
+    return [
+      `# ${title}`,
+      "",
+      `Query: ${grep.query}`,
+      `Mode: ${grep.mode}`,
+      "",
+      rawSourceWarning,
+      "",
+      ...grep.results.map((result, index) =>
+        [
+          `## ${index + 1}. ${result.line ? `${result.path}:${result.line}` : result.path}`,
+          "",
+          `- score: ${result.score.toFixed(3)}`,
+          `- match_type: ${result.match_type}`,
+          `- trust: ${result.trust ?? "unknown"}`,
+          result.node_id ? `- node_id: ${result.node_id}` : null,
+          `- source_path: ${result.source_path}`,
+          `- raw_ref: ${result.raw_ref ?? "(none)"}`,
+          `- snippet: ${result.snippet}`
+        ].filter(Boolean).join("\n")
+      ),
+      ""
+    ].join("\n");
+  }
+  return renderRecallResults(title, response as RecallResponse);
+}
+
+function renderBriefResults(response: BriefResponse | null): string {
+  if (!response) return "# Brief results\n\nNo query has been run.\n";
+  const recalled = response.memory_results;
+  return [
+    "# Brief results",
+    "",
+    rawSourceWarning,
+    "",
+    response.brief_markdown.trim(),
+    "",
+    "## Source-backed memory used",
+    "",
+    ...(recalled.length
+      ? recalled.map((result, index) =>
+          [
+            `### ${index + 1}. ${result.summary}`,
+            "",
+            `- score: ${result.score.toFixed(3)}`,
+            `- trust: ${result.trust_level ?? "unknown"}`,
+            `- node_id: ${result.node_id}`,
+            `- type: ${result.memory_type}`,
+            `- source_path: ${result.source_path}`,
+            `- raw_ref: ${result.raw_ref}`,
+            result.warnings?.length ? `- warnings: ${result.warnings.join("; ")}` : null
+          ].filter(Boolean).join("\n")
+        )
+      : ["No memory results were used."]),
+    ""
+  ].join("\n");
+}
+
+const rawSourceWarning = "> Raw source content is not returned here. Read the source file or use explicit raw-source tools when needed.";
+
 const controlFiles = [
   "README.md",
   "status.json",
@@ -685,6 +851,8 @@ const controlFiles = [
   "recall.results.md",
   "search.query",
   "search.results.md",
+  "brief.query",
+  "brief.results.md",
   "audit.md",
   "health.md"
 ];
@@ -702,6 +870,9 @@ cat .memfs/recall.results.md
 echo "onboarding decision" > .memfs/search.query
 cat .memfs/search.results.md
 
+echo "Fix OAuth refresh token flow" > .memfs/brief.query
+cat .memfs/brief.results.md
+
 cat .memfs/status.json
 cat .memfs/audit.md
 cat .memfs/health.md
@@ -711,11 +882,15 @@ Files:
 
 - recall.query: write a query to run memory recall for this mount session.
 - recall.results.md: read markdown recall results with source_path and raw_ref.
-- search.query: write a query to run memory search for this mount session.
+- search.query: write a query to run hybrid memory grep for this mount session.
 - search.results.md: read markdown search results with source_path and raw_ref.
+- brief.query: write a task to generate a pre-task memory brief for this mount session.
+- brief.results.md: read a compact brief with source paths, trust, scores, node ids, and raw refs.
 - status.json: read workspace and mount state.
 - audit.md: read recent audit events when supported.
 - health.md: read memory health when supported.
+
+Recall/search/brief results do not include raw source content by default. Read the source file or use explicit raw-source tools when needed.
 
 Control files do not create normal workspace files.
 .memfs is reserved and cannot be removed, renamed, or overwritten as normal memory.

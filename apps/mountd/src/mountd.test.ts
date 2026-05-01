@@ -216,6 +216,8 @@ function fakeCore(initialFiles: Record<string, string> = {}): MountCore & {
         lastSearchQuery: null,
         lastRecallAt: null,
         lastSearchAt: null,
+        lastBriefQuery: null,
+        lastBriefAt: null,
         requestedTrustLevel: null,
         defaultRunFolder: null,
         mountedAt: new Date().toISOString(),

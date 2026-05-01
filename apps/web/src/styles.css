@@ -168,7 +168,7 @@ textarea {
   }
 
   .tabs {
-    @apply grid grid-cols-3 gap-1 rounded-md border p-1 sm:grid-cols-8;
+    @apply grid grid-cols-3 gap-1 rounded-md border p-1 sm:grid-cols-9;
     border-color: var(--line);
     background: var(--canvas);
   }
@@ -305,6 +305,45 @@ textarea {
     @apply mt-2 grid grid-cols-3 gap-1 rounded-md border p-2 font-mono text-[11px];
     color: var(--muted);
     border-color: var(--line);
+    background: var(--canvas);
+  }
+
+  .candidate-filter-grid {
+    @apply grid grid-cols-2 gap-2;
+  }
+
+  .candidate-card {
+    @apply rounded-md border p-3 shadow-panel;
+    color: var(--ink);
+    border-color: var(--line);
+    background: var(--surface);
+  }
+
+  .candidate-action-row {
+    @apply mt-3 flex flex-wrap gap-1.5 border-t pt-3;
+    border-color: var(--line);
+  }
+
+  .candidate-edit-grid {
+    @apply mt-3 grid gap-2 rounded-md border p-2;
+    border-color: var(--line);
+    background: var(--canvas);
+  }
+
+  .candidate-edit-grid label {
+    @apply grid gap-1 text-xs font-medium;
+    color: var(--muted);
+  }
+
+  .risk-pill {
+    @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px];
+    color: oklch(0.38 0.105 45);
+    background: oklch(0.93 0.052 72);
+  }
+
+  .source-ref-row {
+    @apply grid gap-1 rounded-md px-2 py-1.5 font-mono text-[11px];
+    color: var(--muted);
     background: var(--canvas);
   }
 }

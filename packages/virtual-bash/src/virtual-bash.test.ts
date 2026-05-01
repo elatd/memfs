@@ -47,12 +47,30 @@ describe("virtual bash", () => {
 
     const grep = await shell.exec('grep "simplify onboarding"');
     expect(grep.displayText).toContain("/runs/demo/result.md");
+    expect(grep.displayText).toContain("trust=");
+    expect((grep.data as { mode: string; results: Array<{ match_type: string }> }).mode).toBe("hybrid");
 
     const sgrep = await shell.exec('sgrep "onboarding decision"');
     expect(sgrep.displayText).toContain("raw_ref:");
 
     const recall = await shell.exec('recall "What should I remember before changing onboarding?"');
     expect(recall.displayText).toContain("source: /runs/demo/result.md");
+  });
+
+  it("passes include-stale through virtual grep", async () => {
+    const shell = createMemoryFsShell({ memoryfs, workspaceId });
+    await shell.exec('write /scratch/stale.md "Decision: Backend plan uses the old auth service."');
+    const node = memoryfs.listMemoryNodes(workspaceId).find((entry) => entry.source_path === "/scratch/stale.md")!;
+    memoryfs.markMemoryStale(workspaceId, node.id, {
+      actor: "human:test",
+      reason: "Auth service changed"
+    });
+
+    const hidden = await shell.exec('grep --semantic "old auth service"');
+    const visible = await shell.exec('grep --semantic --include-stale "old auth service"');
+
+    expect((hidden.data as { results: Array<{ node_id: string | null }> }).results.some((result) => result.node_id === node.id)).toBe(false);
+    expect((visible.data as { results: Array<{ node_id: string | null }> }).results.some((result) => result.node_id === node.id)).toBe(true);
   });
 
   it("denies protected write append and delete by default and audits denials", async () => {

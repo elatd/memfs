@@ -66,6 +66,106 @@ interface RecallResult {
   raw_ref: string;
   raw_excerpt?: string | null;
   raw_content?: string | null;
+  scope?: string;
+  project_slug?: string | null;
+  repo_path?: string | null;
+  session_id?: string | null;
+  agent_id?: string | null;
+  contact_id?: string | null;
+  run_id?: string | null;
+}
+
+interface MemoryGraphEdge {
+  id: string;
+  edge_kind: "memory_link" | "graph_edge";
+  workspace_id: string;
+  from_type: string;
+  from_id: string;
+  to_type: string;
+  to_id: string;
+  relation_type: string;
+  confidence: number;
+  reason: string;
+  source_ref: string | null;
+  created_at: string;
+  direction?: "outgoing" | "incoming";
+  other_type?: string;
+  other_id?: string;
+  from_summary?: string | null;
+  to_summary?: string | null;
+  from_source_path?: string | null;
+  to_source_path?: string | null;
+}
+
+interface MemoryGraphNodeResponse {
+  node: MemoryNode;
+  edges: MemoryGraphEdge[];
+}
+
+interface RelatedMemoryResult {
+  node: MemoryNode;
+  depth: number;
+  score: number;
+  path: MemoryGraphEdge[];
+}
+
+interface RelationshipPathResponse {
+  from_node: MemoryNode;
+  to_node: MemoryNode;
+  found: boolean;
+  path: MemoryGraphEdge[];
+  explanation: string;
+}
+
+interface DeleteGraphEdgeResponse {
+  deleted: boolean;
+  edge: MemoryGraphEdge;
+}
+
+interface MemoryGrepResponse {
+  query: string;
+  mode: "literal" | "semantic" | "hybrid";
+  workspace_id: string;
+  results: MemoryGrepResult[];
+}
+
+interface MemoryGrepResult {
+  path: string;
+  source_path: string;
+  raw_ref: string | null;
+  line: number | null;
+  snippet: string;
+  score: number;
+  trust: string | null;
+  scope?: string;
+  project_slug?: string | null;
+  repo_path?: string | null;
+  session_id?: string | null;
+  agent_id?: string | null;
+  contact_id?: string | null;
+  run_id?: string | null;
+  node_id: string | null;
+  match_type: string;
+}
+
+interface ArchiveEntry {
+  id: string;
+  archive_type: string;
+  title: string;
+  path: string;
+  raw_ref: string;
+  created_at: string;
+}
+
+interface ArchiveReadResponse {
+  entry: ArchiveEntry;
+  content: string;
+}
+
+interface ArchiveExtractResponse {
+  archive: ArchiveEntry;
+  candidate_nodes: MemoryNode[];
+  summary: string;
 }
 
 interface MemoryNode {
@@ -80,6 +180,24 @@ interface MemoryNode {
   source_path: string;
   raw_ref: string;
   source_location_json?: string | null;
+  trust_level?: string;
+  status?: string;
+  valid_from?: string | null;
+  valid_until?: string | null;
+  last_confirmed_at?: string | null;
+  last_used_at?: string | null;
+  supersedes?: string[];
+  superseded_by?: string[];
+  stale_reason?: string | null;
+  scope?: string;
+  project_id?: string | null;
+  project_slug?: string | null;
+  repo_id?: string | null;
+  repo_path?: string | null;
+  session_id?: string | null;
+  agent_id?: string | null;
+  contact_id?: string | null;
+  run_id?: string | null;
 }
 
 interface ExtractedSource {
@@ -111,6 +229,49 @@ interface MemoryPromotion {
   created_at: string;
 }
 
+interface MemoryCandidate {
+  id: string;
+  node_id: string;
+  memory_text: string;
+  type: string;
+  scope: string;
+  source_refs: Array<{ source_path: string; raw_ref: string; source_location?: Record<string, unknown> | null }>;
+  confidence: number;
+  risk_flags: string[];
+  status: string;
+  duplicate_of: string | null;
+  conflicts_with: string[];
+  conflict_reason: string | null;
+  created_by: string;
+  created_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  promotion_id: string | null;
+  promotion_target_path: string | null;
+  reason: string | null;
+  node: MemoryNode;
+}
+
+interface ReasoningMemoryCandidate {
+  id: string;
+  node_id: string;
+  type: "reasoning_memory";
+  title: string;
+  trigger: string;
+  context: string;
+  strategy: string;
+  failure_pattern: string;
+  success_pattern: string;
+  applies_to: string[];
+  preconditions: string[];
+  anti_patterns: string[];
+  source_run: string;
+  source_refs: Array<{ path: string; raw_ref: string | null }>;
+  confidence: number;
+  status: string;
+  reason: string;
+}
+
 interface SnapshotRecord {
   id: string;
   name: string;
@@ -129,6 +290,10 @@ interface MemoryHealth {
   low_confidence_count: number;
   rejected_node_count: number;
   stale_node_count: number;
+  old_node_count?: number;
+  unconfirmed_node_count?: number;
+  superseded_node_count?: number;
+  conflicted_node_count?: number;
 }
 
 interface SyncStatus {
@@ -167,6 +332,8 @@ interface AgentRun {
 
 interface BriefResponse {
   brief_markdown: string;
+  sections?: Record<string, unknown>;
+  memory_results?: RecallResult[];
   run_id?: string;
 }
 
@@ -239,11 +406,11 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
       case "extracted":
         return await extractedCommand(client, env, io, parsed, required(subcommand, "memfs extracted requires a MemFS path."));
       case "grep":
-        return await memorySearch(client, env, io, parsed, [subcommand, ...rest].filter(isString).join(" "), false);
+        return await memorySearch(client, env, io, parsed, [subcommand, ...rest].filter(isString), false);
       case "sgrep":
-        return await memorySearch(client, env, io, parsed, [subcommand, ...rest].filter(isString).join(" "), true);
+        return await memorySearch(client, env, io, parsed, [subcommand, ...rest].filter(isString), true);
       case "recall":
-        return await recallCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString).join(" "));
+        return await recallCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString));
       case "node":
         return await nodeCommand(client, env, io, parsed, subcommand, rest);
       case "nodes":
@@ -260,6 +427,14 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
         return await promoteCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString));
       case "promotions":
         return await promotionsCommand(client, env, io, parsed);
+      case "candidates":
+        return await candidatesCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString));
+      case "candidate":
+        return await candidateCommand(client, env, io, parsed, subcommand, rest);
+      case "memory":
+        return await memoryCommand(client, env, io, parsed, subcommand, rest);
+      case "graph":
+        return await graphCommand(client, env, io, parsed, subcommand, rest);
       case "approve":
         return await approvalCommand(client, env, io, parsed, required(subcommand, "memfs approve requires a promotion id."), true);
       case "reject":
@@ -271,11 +446,13 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
       case "health":
         return await healthCommand(client, env, io, parsed);
       case "brief":
-        return await briefCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString).join(" "));
+        return await briefCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString));
       case "run":
         return await runCommand(client, env, io, parsed, subcommand, rest);
       case "runs":
         return await runsCommand(client, env, io, parsed);
+      case "archive":
+        return await archiveCommand(client, env, io, parsed, subcommand, rest);
       case "handoff":
         return await handoffCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString));
       case "stale":
@@ -361,14 +538,25 @@ async function briefCommand(
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
-  task: string
+  args: string[]
 ): Promise<number> {
   return withWorkspace(client, env, io, parsed, async (workspaceId) => {
-    const cleaned = required(task.trim(), "memfs brief requires a task.");
+    const briefArgs = parseBriefArgs(args);
+    const cleaned = required(briefArgs.task.trim(), "memfs brief requires a task.");
     const response = (await client.createBrief(workspaceId, cleaned, {
       actor: "human:cli",
-      project_hint: optionValue(parsed.args, "--project"),
-      create_run: parsed.args.includes("--run")
+      project_hint: briefArgs.project_slug,
+      scope: briefArgs.scope,
+      project_slug: briefArgs.project_slug,
+      repo_path: briefArgs.repo_path,
+      session_id: briefArgs.session_id,
+      agent_id: briefArgs.agent_id,
+      contact_id: briefArgs.contact_id,
+      run_id: briefArgs.run_id,
+      files: briefArgs.files,
+      include_candidates: briefArgs.include_candidates,
+      limit: briefArgs.limit,
+      create_run: briefArgs.create_run
     })) as BriefResponse;
     output(io, parsed, response.brief_markdown, response);
   });
@@ -405,8 +593,19 @@ async function runCommand(
   if (subcommand === "compile") {
     return withWorkspace(client, env, io, parsed, async (workspaceId) => {
       const runId = required(rest[0], "memfs run compile requires a run id.");
-      const response = await client.compileRun(workspaceId, runId, { actor: "human:cli" });
+      const response = await client.compileRun(workspaceId, runId, {
+        actor: "human:cli",
+        reasoning: rest.includes("--reasoning")
+      });
       output(io, parsed, JSON.stringify(response, null, 2), response);
+    });
+  }
+
+  if (subcommand === "lessons") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const runId = required(rest[0], "memfs run lessons requires a run id.");
+      const lessons = (await client.listRunLessons(workspaceId, runId)) as ReasoningMemoryCandidate[];
+      output(io, parsed, lessons.map(formatReasoningLesson).join("\n\n") || "(no reasoning lessons)", lessons);
     });
   }
 
@@ -430,7 +629,7 @@ async function runCommand(
     return 0;
   }
 
-  throw new Error("Usage: memfs run create <task> | memfs run complete <run_id> | memfs run compile <run_id> | memfs run show <run_id> | memfs run path <run_id> | memfs run today");
+  throw new Error("Usage: memfs run create <task> | memfs run complete <run_id> | memfs run compile <run_id> [--reasoning] | memfs run lessons <run_id> | memfs run show <run_id> | memfs run path <run_id> | memfs run today");
 }
 
 async function runsCommand(
@@ -443,6 +642,70 @@ async function runsCommand(
     const runs = (await client.listRuns(workspaceId)) as AgentRun[];
     output(io, parsed, runs.map(formatRun).join("\n") || "(no runs)", runs);
   });
+}
+
+async function archiveCommand(
+  client: MemoryFSClient,
+  env: NodeJS.ProcessEnv,
+  io: CliIo,
+  parsed: ParsedArgs,
+  subcommand: string | undefined,
+  rest: string[]
+): Promise<number> {
+  if (subcommand === "add") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const localPath = required(rest[0], "memfs archive add requires a local text file.");
+      const content = await readFile(localPath, "utf8");
+      const archiveType = optionValue(rest, "--type") ?? "imported";
+      const title = optionValue(rest, "--title") ?? path.basename(localPath);
+      const entry = (await client.importArchiveText(workspaceId, content, {
+        archive_type: archiveType as "conversation" | "transcript" | "imported" | "agent-run" | "raw",
+        title,
+        actor: "human:cli",
+        metadata: { imported_from: localPath }
+      })) as ArchiveEntry;
+      output(io, parsed, formatArchiveEntry(entry), entry);
+    });
+  }
+
+  if (subcommand === "list") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const entries = (await client.listArchive(workspaceId)) as ArchiveEntry[];
+      output(io, parsed, entries.map(formatArchiveEntry).join("\n") || "(no archive entries)", entries);
+    });
+  }
+
+  if (subcommand === "show") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const archiveId = required(rest[0], "memfs archive show requires an archive id.");
+      const response = (await client.readArchive(workspaceId, archiveId)) as ArchiveReadResponse;
+      output(io, parsed, response.content, response);
+    });
+  }
+
+  if (subcommand === "extract") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const archiveId = required(rest[0], "memfs archive extract requires an archive id.");
+      const response = (await client.extractArchive(workspaceId, archiveId, {
+        actor: "human:cli"
+      })) as ArchiveExtractResponse;
+      output(io, parsed, formatArchiveExtract(response), response);
+    });
+  }
+
+  if (subcommand === "search") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const query = required(rest.join(" ").trim(), "memfs archive search requires a query.");
+      const response = (await client.searchArchive(workspaceId, query, {
+        mode: "hybrid",
+        scope: ["archive"],
+        include_sources: true
+      })) as MemoryGrepResponse;
+      output(io, parsed, formatMemoryGrep(response), response);
+    });
+  }
+
+  throw new Error("Usage: memfs archive add <local_path> --type conversation|transcript|imported|agent-run|raw --title <title> | memfs archive list | memfs archive show <archive_id> | memfs archive extract <archive_id> | memfs archive search <query>");
 }
 
 async function handoffCommand(
@@ -608,6 +871,203 @@ async function promotionsCommand(
       promotions
     );
   });
+}
+
+async function candidatesCommand(
+  client: MemoryFSClient,
+  env: NodeJS.ProcessEnv,
+  io: CliIo,
+  parsed: ParsedArgs,
+  args: string[]
+): Promise<number> {
+  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    const candidates = (await client.listCandidates(workspaceId, candidateListOptions(args))) as MemoryCandidate[];
+    output(io, parsed, candidates.map(formatCandidate).join("\n\n") || "(no candidates)", candidates);
+  });
+}
+
+async function candidateCommand(
+  client: MemoryFSClient,
+  env: NodeJS.ProcessEnv,
+  io: CliIo,
+  parsed: ParsedArgs,
+  subcommand: string | undefined,
+  rest: string[]
+): Promise<number> {
+  if (subcommand === "show") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const id = required(rest[0], "memfs candidate show requires a candidate id.");
+      const candidate = (await client.readCandidate(workspaceId, id)) as MemoryCandidate;
+      output(io, parsed, formatCandidate(candidate), candidate);
+    });
+  }
+
+  if (subcommand === "edit") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const id = required(rest[0], "memfs candidate edit requires a candidate id.");
+      const body = candidateEditBody(rest.slice(1));
+      if (Object.keys(body).length === 1 && body.actor) {
+        throw new Error("Usage: memfs candidate edit <id> [--summary <text>] [--detail <text>] [--status stale|conflicted|candidate|observed|superseded] [--target <path>] [--reason <text>]");
+      }
+      const candidate = (await client.updateCandidate(workspaceId, id, body)) as MemoryCandidate;
+      output(io, parsed, formatCandidate(candidate), candidate);
+    });
+  }
+
+  if (subcommand === "approve") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const id = required(rest[0], "memfs candidate approve requires a candidate id.");
+      const candidate = (await client.approveCandidate(workspaceId, id, {
+        reviewer: "human:cli",
+        comment: optionValue(rest, "--comment"),
+        target_path: optionValue(rest, "--target") ?? optionValue(rest, "--to"),
+        apply: true
+      })) as MemoryCandidate;
+      output(io, parsed, formatCandidate(candidate), candidate);
+    });
+  }
+
+  if (subcommand === "reject") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const id = required(rest[0], "memfs candidate reject requires a candidate id.");
+      const candidate = (await client.rejectCandidate(workspaceId, id, {
+        reviewer: "human:cli",
+        comment: optionValue(rest, "--comment")
+      })) as MemoryCandidate;
+      output(io, parsed, formatCandidate(candidate), candidate);
+    });
+  }
+
+  if (subcommand === "resolve-conflict") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const id = required(rest[0], "memfs candidate resolve-conflict requires a candidate id.");
+      const mode = required(optionValue(rest, "--mode"), "memfs candidate resolve-conflict requires --mode keep_new|keep_old|keep_both|mark_superseded.");
+      if (!["keep_new", "keep_old", "keep_both", "mark_superseded"].includes(mode)) {
+        throw new Error("memfs candidate resolve-conflict --mode must be keep_new, keep_old, keep_both, or mark_superseded.");
+      }
+      const candidate = (await client.resolveCandidateConflict(workspaceId, id, {
+        mode: mode as "keep_new" | "keep_old" | "keep_both" | "mark_superseded",
+        actor: "human:cli",
+        reason: optionValue(rest, "--reason"),
+        target_path: optionValue(rest, "--target") ?? optionValue(rest, "--to")
+      })) as MemoryCandidate;
+      output(io, parsed, formatCandidate(candidate), candidate);
+    });
+  }
+
+  throw new Error("Usage: memfs candidate show|edit|approve|reject|resolve-conflict <candidate_id>");
+}
+
+async function memoryCommand(
+  client: MemoryFSClient,
+  env: NodeJS.ProcessEnv,
+  io: CliIo,
+  parsed: ParsedArgs,
+  subcommand: string | undefined,
+  rest: string[]
+): Promise<number> {
+  if (subcommand === "mark-stale") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const nodeId = required(rest[0], "memfs memory mark-stale requires a node id.");
+      const reason = (optionValue(rest, "--reason") ?? rest.slice(1).join(" ").trim()) || "Marked stale.";
+      const node = (await client.markMemoryStale(workspaceId, nodeId, {
+        actor: "human:cli",
+        reason
+      })) as MemoryNode;
+      output(io, parsed, formatNode(node), node);
+    });
+  }
+
+  if (subcommand === "confirm") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const nodeId = required(rest[0], "memfs memory confirm requires a node id.");
+      const node = (await client.confirmMemory(workspaceId, nodeId, { actor: "human:cli" })) as MemoryNode;
+      output(io, parsed, formatNode(node), node);
+    });
+  }
+
+  if (subcommand === "supersede") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const oldNodeId = required(rest[0], "memfs memory supersede requires an old node id.");
+      const newNodeId = required(rest[1], "memfs memory supersede requires a new node id.");
+      const link = await client.supersedeMemory(workspaceId, oldNodeId, newNodeId, {
+        actor: "human:cli",
+        reason: optionValue(rest, "--reason")
+      });
+      output(io, parsed, JSON.stringify(link, null, 2), link);
+    });
+  }
+
+  throw new Error("Usage: memfs memory mark-stale <node_id> --reason <text> | memfs memory confirm <node_id> | memfs memory supersede <old_node_id> <new_node_id>");
+}
+
+async function graphCommand(
+  client: MemoryFSClient,
+  env: NodeJS.ProcessEnv,
+  io: CliIo,
+  parsed: ParsedArgs,
+  subcommand: string | undefined,
+  rest: string[]
+): Promise<number> {
+  if (subcommand === "node") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const nodeId = required(rest[0], "memfs graph node requires a node id.");
+      const response = (await client.getMemoryGraphNode(workspaceId, nodeId)) as MemoryGraphNodeResponse;
+      output(io, parsed, formatGraphNode(response), response);
+    });
+  }
+
+  if (subcommand === "related") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const nodeId = required(rest[0], "memfs graph related requires a node id.");
+      const response = (await client.findRelatedMemories(workspaceId, nodeId, graphRelatedOptions(rest.slice(1)))) as RelatedMemoryResult[];
+      output(io, parsed, response.map(formatRelatedMemory).join("\n\n") || "(no related memories)", response);
+    });
+  }
+
+  if (subcommand === "link") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const fromId = required(rest[0], "memfs graph link requires a from id.");
+      const relationType = required(rest[1], "memfs graph link requires a relation type.");
+      const toId = required(rest[2], "memfs graph link requires a to id.");
+      const confidence = optionValue(rest, "--confidence");
+      const edge = (await client.createGraphEdge(workspaceId, {
+        from_type: optionValue(rest, "--from-type") ?? "memory_node",
+        from_id: fromId,
+        to_type: optionValue(rest, "--to-type") ?? "memory_node",
+        to_id: toId,
+        relation_type: relationType,
+        confidence: confidence ? Number(confidence) : undefined,
+        reason: optionValue(rest, "--reason"),
+        source_ref: optionValue(rest, "--source-ref") ?? undefined,
+        actor: "human:cli"
+      })) as MemoryGraphEdge;
+      output(io, parsed, formatGraphEdge(edge), edge);
+    });
+  }
+
+  if (subcommand === "unlink") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const edgeId = required(rest[0], "memfs graph unlink requires an edge id.");
+      const response = (await client.deleteGraphEdge(workspaceId, edgeId, { actor: "human:cli" })) as DeleteGraphEdgeResponse;
+      output(io, parsed, `Deleted graph edge ${response.edge.id}`, response);
+    });
+  }
+
+  if (subcommand === "path") {
+    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+      const fromId = required(rest[0], "memfs graph path requires a from node id.");
+      const toId = required(rest[1], "memfs graph path requires a to node id.");
+      const maxDepth = optionValue(rest, "--max-depth");
+      const response = (await client.explainGraphPath(workspaceId, fromId, toId, {
+        max_depth: maxDepth ? Number(maxDepth) : undefined,
+        relation_types: optionValue(rest, "--relation-types")?.split(",").map((entry) => entry.trim()).filter(Boolean)
+      })) as RelationshipPathResponse;
+      output(io, parsed, formatGraphPath(response), response);
+    });
+  }
+
+  throw new Error("Usage: memfs graph node <node_id> | memfs graph related <node_id> | memfs graph link <from> <type> <to> | memfs graph unlink <edge_id> | memfs graph path <from_node_id> <to_node_id>");
 }
 
 async function approvalCommand(
@@ -861,21 +1321,39 @@ async function memorySearch(
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
-  query: string,
+  args: string[],
   semantic: boolean
 ): Promise<number> {
   return withWorkspace(client, env, io, parsed, async (workspaceId) => {
-    const cleaned = required(query.trim(), `memfs ${semantic ? "sgrep" : "grep"} requires a query.`);
-    const response = (semantic
-      ? await client.recallMemory(workspaceId, cleaned, { include_detail: true, include_raw: false })
-      : await client.searchMemory(workspaceId, cleaned, { include_detail: true, include_raw: false })) as RecallResponse;
-    const literal_matches = semantic ? [] : await literalMatches(client, workspaceId, cleaned);
-    output(
-      io,
-      parsed,
-      semantic ? formatSearchResults(response.results) : formatGrepResults(literal_matches, response.results),
-      semantic ? response : { ...response, literal_matches }
-    );
+    if (semantic) {
+      const cleaned = required(args.join(" ").trim(), "memfs sgrep requires a query.");
+      const response = (await client.recallMemory(workspaceId, cleaned, {
+        include_detail: true,
+        include_raw: false
+      })) as RecallResponse;
+      output(io, parsed, formatSearchResults(response.results), response);
+      return;
+    }
+
+    const grep = parseGrepArgs(args);
+    const cleaned = required(grep.query.trim(), "memfs grep requires a query.");
+    const response = (await client.grepMemory(workspaceId, cleaned, {
+      mode: grep.mode,
+      scope: grep.scope,
+      project_slug: grep.project_slug,
+      repo_path: grep.repo_path,
+      session_id: grep.session_id,
+      agent_id: grep.agent_id,
+      contact_id: grep.contact_id,
+	      run_id: grep.run_id,
+	      trust_min: grep.trust_min,
+	      include_runs: grep.include_runs,
+	      include_sources: grep.include_sources,
+	      include_stale: grep.include_stale,
+	      limit: grep.limit,
+	      project_hint: grep.project_hint
+    })) as MemoryGrepResponse;
+    output(io, parsed, formatMemoryGrep(response), response);
   });
 }
 
@@ -884,13 +1362,22 @@ async function recallCommand(
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
-  query: string
+  args: string[]
 ): Promise<number> {
   return withWorkspace(client, env, io, parsed, async (workspaceId) => {
-    const cleaned = required(query.trim(), "memfs recall requires a query.");
+    const scoped = parseScopedQueryArgs(args);
+    const cleaned = required(scoped.query.trim(), "memfs recall requires a query.");
     const response = (await client.recallMemory(workspaceId, cleaned, {
       include_detail: true,
-      include_raw: false
+      include_raw: false,
+      scope: scoped.scope,
+      project_slug: scoped.project_slug,
+      repo_path: scoped.repo_path,
+      session_id: scoped.session_id,
+      agent_id: scoped.agent_id,
+      contact_id: scoped.contact_id,
+      run_id: scoped.run_id,
+      include_related: scoped.include_related
     })) as RecallResponse;
     output(io, parsed, formatRecall(response), response);
   });
@@ -907,13 +1394,19 @@ async function nodeCommand(
   if (subcommand === "list") {
     return withWorkspace(client, env, io, parsed, async (workspaceId) => {
       const sourceFilter = optionValue(parsed.args, "--source");
+      const scopeFilter = optionValue(parsed.args, "--scope");
+      const projectFilter = optionValue(parsed.args, "--project");
+      const runFilter = optionValue(parsed.args, "--run");
       const nodes = ((await client.listMemoryNodes(workspaceId)) as MemoryNode[]).filter((node) =>
-        sourceFilter ? node.source_path === sourceFilter : true
+        (sourceFilter ? node.source_path === sourceFilter : true) &&
+        (scopeFilter ? node.scope === scopeFilter : true) &&
+        (projectFilter ? node.project_slug === projectFilter : true) &&
+        (runFilter ? node.run_id === runFilter : true)
       );
       output(
         io,
         parsed,
-        nodes.map((node) => `${node.id} ${node.memory_type} ${node.source_path}\n  ${node.summary}`).join("\n") || "(no nodes)",
+        nodes.map((node) => `${node.id} ${node.memory_type} scope=${node.scope ?? "workspace"} ${node.source_path}\n  ${node.summary}`).join("\n") || "(no nodes)",
         nodes
       );
     });
@@ -984,31 +1477,21 @@ function formatSearchResults(results: RecallResult[]): string {
   );
 }
 
-function formatGrepResults(literalMatches: Array<{ path: string; line: number; text: string }>, results: RecallResult[]): string {
-  const literalText = literalMatches.map((match) => `${match.path}:${match.line}:${match.text}`).join("\n");
-  const memoryText = formatSearchResults(results);
-  return [literalText, memoryText === "(no results)" ? "" : memoryText].filter(Boolean).join("\n\n") || "(no results)";
-}
-
-async function literalMatches(
-  client: MemoryFSClient,
-  workspaceId: string,
-  query: string
-): Promise<Array<{ path: string; line: number; text: string }>> {
-  const files = (await client.listFiles(workspaceId)) as FileRecord[];
-  const matches: Array<{ path: string; line: number; text: string }> = [];
-  for (const file of files) {
-    if (file.path.toLowerCase().includes(query.toLowerCase())) {
-      matches.push({ path: file.path, line: 0, text: "(path match)" });
-    }
-    const read = (await client.readFile(workspaceId, file.path)) as FileReadResponse;
-    read.content.split(/\n/).forEach((line, index) => {
-      if (line.toLowerCase().includes(query.toLowerCase())) {
-        matches.push({ path: file.path, line: index + 1, text: line });
-      }
-    });
-  }
-  return matches;
+function formatMemoryGrep(response: MemoryGrepResponse): string {
+  return (
+    response.results
+      .map((result) => {
+        const location = result.line ? `${result.path}:${result.line}` : result.path;
+        const node = result.node_id ? ` node=${result.node_id}` : "";
+        const raw = result.raw_ref ? `\n  raw_ref: ${result.raw_ref}` : "";
+        return (
+          `${location} [${result.score.toFixed(2)} ${result.match_type} trust=${result.trust ?? "unknown"}${node}]\n` +
+          `  ${result.snippet}\n` +
+          `  source: ${result.source_path}${raw}`
+        );
+      })
+      .join("\n\n") || "(no results)"
+  );
 }
 
 function formatRecall(response: RecallResponse): string {
@@ -1032,13 +1515,64 @@ function formatNode(node: MemoryNode): string {
     `${node.id} ${node.memory_type} importance=${node.importance} confidence=${node.confidence}`,
     `summary: ${node.summary}`,
     `trigger: ${node.trigger}`,
-    node.detail ? `detail: ${node.detail}` : "",
-    `source: ${node.source_path}`,
+	    node.detail ? `detail: ${node.detail}` : "",
+	    `status: ${node.status ?? "unknown"} trust=${node.trust_level ?? "unknown"}`,
+	    node.stale_reason ? `stale_reason: ${node.stale_reason}` : "",
+	    node.valid_from ? `valid_from: ${node.valid_from}` : "",
+	    node.valid_until ? `valid_until: ${node.valid_until}` : "",
+	    node.last_confirmed_at ? `last_confirmed_at: ${node.last_confirmed_at}` : "",
+	    node.last_used_at ? `last_used_at: ${node.last_used_at}` : "",
+	    node.supersedes?.length ? `supersedes: ${node.supersedes.join(", ")}` : "",
+	    node.superseded_by?.length ? `superseded_by: ${node.superseded_by.join(", ")}` : "",
+	    `source: ${node.source_path}`,
     `raw_ref: ${node.raw_ref}`,
     `tags: ${node.tags.join(", ")}`
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function formatGraphNode(response: MemoryGraphNodeResponse): string {
+  const edges = response.edges.map((edge) => `  ${formatGraphEdge(edge)}`).join("\n");
+  return [
+    formatNode(response.node),
+    "edges:",
+    edges || "  (none)"
+  ].join("\n");
+}
+
+function formatGraphEdge(edge: MemoryGraphEdge): string {
+  const direction = edge.direction ? ` ${edge.direction}` : "";
+  const source = edge.source_ref ? ` source_ref=${edge.source_ref}` : "";
+  const reason = edge.reason ? `\n    reason: ${edge.reason}` : "";
+  return (
+    `${edge.id} ${edge.edge_kind}${direction} ${edge.from_type}:${edge.from_id} -[${edge.relation_type} ${edge.confidence.toFixed(2)}]-> ${edge.to_type}:${edge.to_id}${source}` +
+    `${edge.from_source_path || edge.to_source_path ? `\n    sources: ${edge.from_source_path ?? "?"} -> ${edge.to_source_path ?? "?"}` : ""}` +
+    reason
+  );
+}
+
+function formatRelatedMemory(result: RelatedMemoryResult): string {
+  const path = result.path.map((edge) => edge.relation_type).join(" -> ");
+  return [
+    `${result.node.id} depth=${result.depth} score=${result.score.toFixed(2)} ${result.node.memory_type}`,
+    `  ${result.node.summary}`,
+    `  source: ${result.node.source_path}`,
+    `  raw_ref: ${result.node.raw_ref}`,
+    path ? `  path: ${path}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function formatGraphPath(response: RelationshipPathResponse): string {
+  return [
+    response.found ? "Relationship path found" : "No relationship path found",
+    `from: ${response.from_node.id} ${response.from_node.summary}`,
+    `to: ${response.to_node.id} ${response.to_node.summary}`,
+    `explanation: ${response.explanation}`,
+    ...response.path.map((edge) => `  ${formatGraphEdge(edge)}`)
+  ].join("\n");
 }
 
 function formatPromotion(promotion: MemoryPromotion): string {
@@ -1048,6 +1582,28 @@ function formatPromotion(promotion: MemoryPromotion): string {
     promotion.candidate_node_id ? `  candidate: ${promotion.candidate_node_id}` : "",
     promotion.reviewer ? `  reviewer: ${promotion.reviewer}` : "",
     promotion.reason ? `  reason: ${promotion.reason}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function formatCandidate(candidate: MemoryCandidate): string {
+  const source = candidate.source_refs[0];
+  return [
+    `${candidate.id} ${candidate.status} type=${candidate.type} confidence=${candidate.confidence}`,
+    `  memory: ${candidate.node.summary}`,
+    source ? `  source: ${source.source_path}` : "",
+    source?.raw_ref ? `  raw_ref: ${source.raw_ref}` : "",
+    candidate.promotion_target_path ? `  target: ${candidate.promotion_target_path}` : "",
+    candidate.promotion_id ? `  promotion: ${candidate.promotion_id}` : "",
+    candidate.duplicate_of ? `  duplicate_of: ${candidate.duplicate_of}` : "",
+    candidate.conflicts_with.length ? `  conflicts_with: ${candidate.conflicts_with.join(", ")}` : "",
+    candidate.conflict_reason ? `  conflict_reason: ${candidate.conflict_reason}` : "",
+	    candidate.reviewed_by ? `  reviewed_by: ${candidate.reviewed_by}` : "",
+	    candidate.risk_flags.length ? `  risk: ${candidate.risk_flags.join(", ")}` : "",
+	    candidate.node.stale_reason ? `  stale_reason: ${candidate.node.stale_reason}` : "",
+	    candidate.node.valid_until ? `  valid_until: ${candidate.node.valid_until}` : "",
+	    candidate.reason ? `  reason: ${candidate.reason}` : ""
   ]
     .filter(Boolean)
     .join("\n");
@@ -1065,10 +1621,14 @@ function formatHealth(health: MemoryHealth): string {
     `pending promotions: ${health.unresolved_promotion_count}`,
     `orphans: ${health.orphan_node_count}`,
     `raw missing: ${health.raw_missing_count}`,
-    `low confidence: ${health.low_confidence_count}`,
-    `rejected: ${health.rejected_node_count}`,
-    `stale: ${health.stale_node_count}`
-  ].join("\n");
+	    `low confidence: ${health.low_confidence_count}`,
+	    `rejected: ${health.rejected_node_count}`,
+	    `stale: ${health.stale_node_count}`,
+	    `old: ${health.old_node_count ?? 0}`,
+	    `unconfirmed: ${health.unconfirmed_node_count ?? 0}`,
+	    `superseded: ${health.superseded_node_count ?? 0}`,
+	    `conflicted: ${health.conflicted_node_count ?? 0}`
+	  ].join("\n");
 }
 
 function formatSyncStatus(status: SyncStatus): string {
@@ -1142,6 +1702,34 @@ function formatRun(run: AgentRun): string {
   return `${run.id} ${run.status} ${run.title}\n  ${run.run_path}`;
 }
 
+function formatReasoningLesson(lesson: ReasoningMemoryCandidate): string {
+  return [
+    `${lesson.id} ${lesson.status} confidence=${lesson.confidence}`,
+    `  title: ${lesson.title}`,
+    `  trigger: ${lesson.trigger}`,
+    `  strategy: ${lesson.strategy}`,
+    `  source_run: ${lesson.source_run}`,
+    lesson.source_refs.length ? `  source_refs: ${lesson.source_refs.map((ref) => ref.path).join(", ")}` : "",
+    lesson.reason ? `  reason: ${lesson.reason}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function formatArchiveEntry(entry: ArchiveEntry): string {
+  return `${entry.id} ${entry.archive_type} ${entry.title}\n  ${entry.path}\n  raw_ref: ${entry.raw_ref}`;
+}
+
+function formatArchiveExtract(response: ArchiveExtractResponse): string {
+  return [
+    response.summary,
+    `archive: ${response.archive.path}`,
+    ...response.candidate_nodes.map((node) =>
+      `${node.id} ${node.memory_type} status=${node.status} trust=${node.trust_level}\n  ${node.summary}\n  raw_ref: ${node.raw_ref}`
+    )
+  ].join("\n");
+}
+
 function parseArgs(argv: string[]): ParsedArgs {
   const args: string[] = [];
   let json = false;
@@ -1161,9 +1749,282 @@ function parseArgs(argv: string[]): ParsedArgs {
   return { args, json, allowProtected, ingest, dryRun };
 }
 
+function parseGrepArgs(args: string[]): {
+  query: string;
+  mode: "literal" | "semantic" | "hybrid";
+  scope?: string[];
+  project_slug?: string;
+  repo_path?: string;
+  session_id?: string;
+  agent_id?: string;
+  contact_id?: string;
+	  run_id?: string;
+	  trust_min?: string;
+	  include_runs?: boolean;
+	  include_sources?: boolean;
+	  include_stale?: boolean;
+	  limit?: number;
+	  project_hint?: string;
+} {
+  const scoped = parseScopedQueryArgs(args);
+	  let mode: "literal" | "semantic" | "hybrid" = "hybrid";
+	  let trustMin: string | undefined;
+	  let includeRuns: boolean | undefined;
+	  let includeSources: boolean | undefined;
+	  let includeStale: boolean | undefined;
+	  let limit: number | undefined;
+
+  for (let index = 0; index < scoped.remainingFlags.length; index += 1) {
+    const arg = scoped.remainingFlags[index]!;
+    if (arg === "--literal" || arg === "-F") {
+      mode = "literal";
+    } else if (arg === "--semantic") {
+      mode = "semantic";
+    } else if (arg === "--hybrid") {
+      mode = "hybrid";
+    } else if (arg === "--trusted-only") {
+      trustMin = "reviewed";
+    } else if (arg === "--trust-min") {
+      trustMin = scoped.remainingFlags[++index];
+    } else if (arg === "--include-runs") {
+      includeRuns = true;
+	    } else if (arg === "--no-runs") {
+	      includeRuns = false;
+	    } else if (arg === "--include-sources") {
+	      includeSources = true;
+	    } else if (arg === "--no-sources") {
+	      includeSources = false;
+	    } else if (arg === "--include-stale") {
+	      includeStale = true;
+	    } else if (arg === "--limit") {
+      const value = Number(scoped.remainingFlags[++index]);
+      if (Number.isFinite(value)) limit = value;
+    }
+  }
+
+  return {
+    query: scoped.query,
+    mode,
+    scope: scoped.scope,
+    project_slug: scoped.project_slug,
+    repo_path: scoped.repo_path,
+    session_id: scoped.session_id,
+    agent_id: scoped.agent_id,
+    contact_id: scoped.contact_id,
+	    run_id: scoped.run_id,
+	    trust_min: trustMin,
+	    include_runs: includeRuns,
+	    include_sources: includeSources,
+	    include_stale: includeStale,
+    limit,
+    project_hint: scoped.project_slug
+  };
+}
+
+function parseScopedQueryArgs(args: string[]): {
+  query: string;
+  scope?: string[];
+  project_slug?: string;
+  repo_path?: string;
+  session_id?: string;
+  agent_id?: string;
+  contact_id?: string;
+  run_id?: string;
+  include_related?: boolean;
+  remainingFlags: string[];
+} {
+  const queryParts: string[] = [];
+  const scope: string[] = [];
+  const remainingFlags: string[] = [];
+  let projectSlug: string | undefined;
+  let repoPath: string | undefined;
+  let sessionId: string | undefined;
+  let agentId: string | undefined;
+  let contactId: string | undefined;
+  let runId: string | undefined;
+  let includeRelated = false;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
+    if (arg === "--scope") {
+      const value = args[++index];
+      if (value) scope.push(...value.split(",").map((entry) => entry.trim()).filter(Boolean));
+    } else if (arg === "--project") {
+      projectSlug = args[++index];
+    } else if (arg === "--repo") {
+      repoPath = args[++index];
+    } else if (arg === "--session") {
+      sessionId = args[++index];
+    } else if (arg === "--agent") {
+      agentId = args[++index];
+    } else if (arg === "--contact") {
+      contactId = args[++index];
+    } else if (arg === "--run") {
+      runId = args[++index];
+    } else if (arg === "--include-related") {
+      includeRelated = true;
+    } else if (arg.startsWith("--") || arg === "-F") {
+      remainingFlags.push(arg);
+      if (["--trust-min", "--limit"].includes(arg) && args[index + 1]) {
+        remainingFlags.push(args[++index]!);
+      }
+    } else {
+      queryParts.push(arg);
+    }
+  }
+
+  return {
+    query: queryParts.join(" "),
+    scope: scope.length ? scope : runId ? ["run"] : undefined,
+    project_slug: projectSlug,
+    repo_path: repoPath,
+    session_id: sessionId,
+    agent_id: agentId,
+    contact_id: contactId,
+    run_id: runId,
+    include_related: includeRelated || undefined,
+    remainingFlags
+  };
+}
+
 function optionValue(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
   return index >= 0 ? args[index + 1] : undefined;
+}
+
+function candidateListOptions(args: string[]): Record<string, unknown> {
+  return compactObject({
+    status: optionValue(args, "--status"),
+    duplicates: args.includes("--duplicates") ? true : undefined,
+    conflicts: args.includes("--conflicts") ? true : undefined,
+    scope: optionValue(args, "--scope"),
+    project_slug: optionValue(args, "--project") ?? optionValue(args, "--project-slug"),
+    repo_path: optionValue(args, "--repo") ?? optionValue(args, "--repo-path"),
+    session_id: optionValue(args, "--session"),
+    agent_id: optionValue(args, "--agent"),
+    contact_id: optionValue(args, "--contact"),
+    run_id: optionValue(args, "--run")
+  });
+}
+
+function graphRelatedOptions(args: string[]): {
+  depth?: number;
+  limit?: number;
+  relation_types?: string[];
+  include_stale?: boolean;
+} {
+  const depth = optionValue(args, "--depth");
+  const limit = optionValue(args, "--limit");
+  const relationTypes = optionValue(args, "--relation-types")?.split(",").map((entry) => entry.trim()).filter(Boolean);
+  return {
+    ...(depth ? { depth: Number(depth) } : {}),
+    ...(limit ? { limit: Number(limit) } : {}),
+    ...(relationTypes?.length ? { relation_types: relationTypes } : {}),
+    ...(args.includes("--include-stale") ? { include_stale: true } : {})
+  };
+}
+
+function candidateEditBody(args: string[]): Record<string, unknown> {
+  const confidence = optionValue(args, "--confidence");
+  const tags = optionValue(args, "--tags");
+  return compactObject({
+    actor: "human:cli",
+    summary: optionValue(args, "--summary"),
+    trigger: optionValue(args, "--trigger"),
+    detail: optionValue(args, "--detail"),
+    memory_text: optionValue(args, "--memory"),
+    memory_type: optionValue(args, "--type"),
+    confidence: confidence ? Number(confidence) : undefined,
+    tags: tags ? tags.split(",").map((tag) => tag.trim()).filter(Boolean) : undefined,
+    status: optionValue(args, "--status"),
+    target_path: optionValue(args, "--target") ?? optionValue(args, "--to"),
+    reason: optionValue(args, "--reason")
+  });
+}
+
+function compactObject(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+}
+
+function parseBriefArgs(args: string[]): {
+  task: string;
+  scope?: string[];
+  project_slug?: string;
+  repo_path?: string;
+  session_id?: string;
+  agent_id?: string;
+  contact_id?: string;
+  run_id?: string;
+  files?: string[];
+  include_candidates?: boolean;
+  create_run?: boolean;
+  limit?: number;
+} {
+  const taskParts: string[] = [];
+  const scope: string[] = [];
+  const files: string[] = [];
+  let projectSlug: string | undefined;
+  let repoPath: string | undefined;
+  let sessionId: string | undefined;
+  let agentId: string | undefined;
+  let contactId: string | undefined;
+  let runId: string | undefined;
+  let includeCandidates = false;
+  let createRun = false;
+  let limit: number | undefined;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--include-candidates") {
+      includeCandidates = true;
+    } else if (arg === "--run") {
+      createRun = true;
+    } else if (arg === "--scope") {
+      const value = args[++index];
+      if (value) scope.push(value);
+    } else if (arg === "--project" || arg === "--project-slug") {
+      projectSlug = args[++index];
+      if (!scope.includes("project")) scope.push("project");
+    } else if (arg === "--repo" || arg === "--repo-path") {
+      repoPath = args[++index];
+      if (!scope.includes("repo")) scope.push("repo");
+    } else if (arg === "--session") {
+      sessionId = args[++index];
+      if (!scope.includes("session")) scope.push("session");
+    } else if (arg === "--agent") {
+      agentId = args[++index];
+      if (!scope.includes("agent")) scope.push("agent");
+    } else if (arg === "--contact") {
+      contactId = args[++index];
+      if (!scope.includes("contact")) scope.push("contact");
+    } else if (arg === "--run-id") {
+      runId = args[++index];
+      if (!scope.includes("run")) scope.push("run");
+    } else if (arg === "--file") {
+      const value = args[++index];
+      if (value) files.push(value);
+    } else if (arg === "--limit") {
+      const value = args[++index];
+      limit = value ? Number(value) : undefined;
+    } else {
+      taskParts.push(arg);
+    }
+  }
+
+  return {
+    task: taskParts.join(" "),
+    scope: scope.length > 0 ? scope : undefined,
+    project_slug: projectSlug,
+    repo_path: repoPath,
+    session_id: sessionId,
+    agent_id: agentId,
+    contact_id: contactId,
+    run_id: runId,
+    files: files.length > 0 ? files : undefined,
+    include_candidates: includeCandidates || undefined,
+    create_run: createRun || undefined,
+    limit
+  };
 }
 
 async function readConfig(env: NodeJS.ProcessEnv): Promise<CliConfig> {
@@ -1247,16 +2108,30 @@ function helpText(): string {
   memfs upload <local_path> [--to <memfs_path>]
   memfs extract <path>
   memfs extracted <path>
-  memfs grep <query>
+	  memfs grep [--literal|-F|--semantic|--hybrid] [--scope <scope>] [--project <slug>] [--trusted-only] [--include-runs] [--include-stale] [--json] <query>
   memfs sgrep <query>
-  memfs recall <query>
-  memfs node list
+  memfs recall <query> [--scope <scope>] [--include-related]
+  memfs node list [--scope <scope>]
   memfs node read <node_id>
   memfs nodes --source <path>
   memfs raw <node_id>
   memfs audit list
   memfs promote <source_path> --to <target_path>
   memfs promotions
+	  memfs candidates [--status <status>] [--duplicates] [--conflicts] [--scope <scope>]
+	  memfs candidate show <candidate_id>
+	  memfs candidate edit <candidate_id>
+	  memfs candidate approve <candidate_id> [--target <path>]
+	  memfs candidate reject <candidate_id>
+	  memfs candidate resolve-conflict <candidate_id> --mode keep_new|keep_old|keep_both|mark_superseded
+	  memfs memory mark-stale <node_id> --reason <text>
+	  memfs memory confirm <node_id>
+	  memfs memory supersede <old_node_id> <new_node_id>
+  memfs graph node <node_id>
+  memfs graph related <node_id>
+  memfs graph link <from_node_id> <relation_type> <to_node_id>
+  memfs graph unlink <edge_id>
+  memfs graph path <from_node_id> <to_node_id>
   memfs approve <promotion_id>
   memfs reject <promotion_id>
   memfs snapshot create <name>
@@ -1264,14 +2139,20 @@ function helpText(): string {
   memfs snapshot diff <snapshot_id>
   memfs rollback <snapshot_id> --dry-run
   memfs health
-  memfs brief "<task>"
+  memfs brief "<task>" [--project <slug>] [--include-candidates] [--json]
   memfs run create "<task>"
   memfs run complete <run_id>
-  memfs run compile <run_id>
+  memfs run compile <run_id> [--reasoning]
+  memfs run lessons <run_id>
   memfs runs
   memfs run show <run_id>
   memfs run path <run_id>
   memfs run today
+  memfs archive add <local_path> --type conversation --title <title>
+  memfs archive list
+  memfs archive show <archive_id>
+  memfs archive extract <archive_id>
+  memfs archive search <query>
   memfs handoff --project <name>
   memfs stale
   memfs mount <workspace> <mountpoint> [--read-only|--read-write]
