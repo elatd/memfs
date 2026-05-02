@@ -823,7 +823,9 @@ export async function embedText(text: string, options: MemoryModelOptions = {}):
   if (options.useLlm !== false && apiKey) {
     try {
       return await requestEmbedding(text, { ...options, apiKey });
-    } catch {}
+    } catch {
+      // Fall through to local embeddings before deterministic lexical fallback.
+    }
   }
 
   if (shouldUseLocalEmbeddings(options)) {

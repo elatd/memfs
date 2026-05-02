@@ -1,5 +1,5 @@
 import cors from "@fastify/cors";
-import { VeriFS, VeriFSError, memoryScopes, memoryTrustLevels, memoryTypes, parseStringUnion, type ArchiveEntryType, type BriefRequest, type MemoryCandidateStatus, type MemoryGraphObjectType, type MemoryGrepOptions, type MemoryRelationType, type MemoryScope, type MemoryTrustLevel, type MemoryType, type RecallOptions, type SyncEvent } from "@verifs/core";
+import { VeriFS, VeriFSError, memoryCandidateStatuses, memoryScopes, memoryTrustLevels, memoryTypes, parseStringUnion, type ArchiveEntryType, type BriefRequest, type MemoryCandidateStatus, type MemoryGraphObjectType, type MemoryGrepOptions, type MemoryRelationType, type MemoryScope, type MemoryTrustLevel, type MemoryType, type RecallOptions, type SyncEvent } from "@verifs/core";
 import dotenv from "dotenv";
 import Fastify, { type FastifyRequest } from "fastify";
 import { dirname, resolve } from "node:path";
@@ -8,8 +8,6 @@ import { fileURLToPath } from "node:url";
 dotenv.config();
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
-
-const memoryCandidateStatuses = ["observed", "candidate", "duplicate", "approved", "rejected", "superseded", "stale", "conflicted"] as const;
 
 type MemoryRecallBody = RecallOptions & {
   query?: string;

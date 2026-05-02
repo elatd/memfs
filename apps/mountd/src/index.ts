@@ -293,10 +293,10 @@ export function createFuseOperations(core: MountCore, options: { mode: MountMode
         const handle = handles.get(fd);
         try {
           await commitHandle(core, handle);
-          callback(0);
         } finally {
           handles.delete(fd);
         }
+        callback(0);
       }),
 
     unlink: (filePath: string, callback: FuseCallback) =>

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import {
   VeriFS,
+  editableMemoryCandidateStatuses,
+  memoryCandidateStatuses,
   memoryScopes,
   memoryTrustLevels,
   memoryTypes,
@@ -21,9 +23,6 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
 dotenv.config();
-
-const memoryCandidateStatuses = ["observed", "candidate", "duplicate", "approved", "rejected", "superseded", "stale", "conflicted"] as const;
-const editableMemoryCandidateStatuses = ["observed", "candidate", "duplicate", "superseded", "stale", "conflicted"] as const;
 
 export interface McpToolHandlers {
   verifs_workspace_list: () => Promise<unknown>;

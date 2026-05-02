@@ -7,6 +7,7 @@ import {
   extractMemoryNodesFromContent,
   extractReasoningMemoriesFromRun,
   keywordScore,
+  memoryCandidateStatuses,
   planRecallQuery,
   riskFlagsForText,
   reciprocalRankFusion,
@@ -15,6 +16,7 @@ import {
   type ExtractedMemoryNode,
   type ExtractedReasoningMemory,
   type CandidateSourceKind,
+  type MemoryCandidateStatus,
   type MemoryModelOptions,
   type MemoryType,
   type RecallMode,
@@ -31,13 +33,14 @@ export type {
   CandidateSourceKind,
   ExtractedMemoryNode,
   ExtractedReasoningMemory,
+  MemoryCandidateStatus,
   MemoryModelOptions,
   MemoryType,
   RankedItem,
   RecallMode,
   RecallQueryPlan
 } from "@verifs/memory";
-export { memoryTypes, recallModes } from "@verifs/memory";
+export { memoryCandidateStatuses, memoryTypes, recallModes } from "@verifs/memory";
 
 export const defaultProtectedPathGlobs = [
   "/profile.md",
@@ -76,15 +79,14 @@ export const memoryTrustLevels = [
   "rejected"
 ] as const;
 export type MemoryTrustLevel = (typeof memoryTrustLevels)[number];
-export type MemoryCandidateStatus =
-  | "observed"
-  | "candidate"
-  | "duplicate"
-  | "approved"
-  | "rejected"
-  | "superseded"
-  | "stale"
-  | "conflicted";
+export const editableMemoryCandidateStatuses = [
+  "observed",
+  "candidate",
+  "duplicate",
+  "superseded",
+  "stale",
+  "conflicted"
+] as const satisfies readonly Exclude<MemoryCandidateStatus, "approved" | "rejected">[];
 export type MemoryNodeStatus = MemoryCandidateStatus | "active" | "pending";
 export type PromotionStatus = "pending" | "approved" | "rejected" | "applied";
 export type SnapshotItemType =

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import {
+  editableMemoryCandidateStatuses,
+  memoryCandidateStatuses,
   memoryGraphObjectTypes,
   memoryTypes,
   memoryRelationTypes,
@@ -76,8 +78,6 @@ interface ParsedArgs {
   dryRun: boolean;
 }
 
-const candidateStatuses = ["observed", "candidate", "duplicate", "approved", "rejected", "superseded", "stale", "conflicted"] as const;
-const editableCandidateStatuses = ["observed", "candidate", "duplicate", "superseded", "stale", "conflicted"] as const;
 const archiveEntryTypes = ["conversation", "transcript", "imported", "agent-run", "raw"] as const;
 const conflictResolutionModes = ["keep_local", "keep_remote", "manual_merge", "keep_both"] as const;
 const candidateConflictResolutionModes = ["keep_new", "keep_old", "keep_both", "mark_superseded"] as const;
@@ -1656,11 +1656,11 @@ function parseMemoryType(value: string | undefined): MemoryType | undefined {
 }
 
 function parseCandidateStatus(value: string | undefined): MemoryCandidateStatus | undefined {
-  return parseStringUnion(value ? [value] : undefined, candidateStatuses, "status")?.[0];
+  return parseStringUnion(value ? [value] : undefined, memoryCandidateStatuses, "status")?.[0];
 }
 
 function parseEditableCandidateStatus(value: string | undefined): ClientCandidateUpdateOptions["status"] | undefined {
-  return parseStringUnion(value ? [value] : undefined, editableCandidateStatuses, "status")?.[0];
+  return parseStringUnion(value ? [value] : undefined, editableMemoryCandidateStatuses, "status")?.[0];
 }
 
 function parseArchiveEntryType(value: string): ArchiveEntryType {
