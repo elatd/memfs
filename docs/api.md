@@ -9,6 +9,8 @@ Base URL: `http://localhost:3131`
 - `VeriFSApiClient`: low-level HTTP methods that map closely to API routes.
 - `VeriFSClient`: a small high-level client for application and agent integrations.
 
+Publication status: `@verifs/sdk` is currently workspace-local and marked private in package metadata, so it is not published to npm. Use these imports inside this monorepo or a linked checkout. External integrations should call the HTTP API directly at `http://localhost:3131` until the SDK package is made publish-ready.
+
 ```ts
 import { VeriFSClient } from "@verifs/sdk";
 
