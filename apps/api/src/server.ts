@@ -1,5 +1,5 @@
 import cors from "@fastify/cors";
-import { MemoryFS, MemoryFSError, memoryTrustLevels, memoryTypes, type ArchiveEntryType, type MemoryGrepOptions, type MemoryRelationType, type MemoryTrustLevel, type MemoryType, type PromoteMemoryRequest, type RecallOptions, type SyncEvent } from "@memoryfs/core";
+import { MemoryFS, MemoryFSError, memoryTrustLevels, memoryTypes, parseStringUnion, type ArchiveEntryType, type MemoryGrepOptions, type MemoryRelationType, type MemoryTrustLevel, type MemoryType, type PromoteMemoryRequest, type RecallOptions, type SyncEvent } from "@memoryfs/core";
 import dotenv from "dotenv";
 import Fastify, { type FastifyRequest } from "fastify";
 import { dirname, resolve } from "node:path";
@@ -841,21 +841,6 @@ function parseMemoryTypes(values: string[] | undefined): MemoryType[] | undefine
 
 function parseMemoryTrustLevels(values: string[] | undefined): MemoryTrustLevel[] | undefined {
   return parseStringUnion(values, memoryTrustLevels, "trust_levels");
-}
-
-function parseStringUnion<const T extends readonly string[]>(
-  values: string[] | undefined,
-  allowed: T,
-  fieldName: string
-): Array<T[number]> | undefined {
-  if (!values) return undefined;
-  const allowedValues = new Set<string>(allowed);
-  return values.map((value) => {
-    if (!allowedValues.has(value)) {
-      throw new MemoryFSError(`${fieldName} contains unsupported value: ${value}`, 400);
-    }
-    return value as T[number];
-  });
 }
 
 function actorFromRequest(request: FastifyRequest): string | undefined {

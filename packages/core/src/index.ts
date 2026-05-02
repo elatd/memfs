@@ -1057,6 +1057,21 @@ export class MemoryFSError extends Error {
   }
 }
 
+export function parseStringUnion<const T extends readonly string[]>(
+  values: readonly string[] | undefined,
+  allowed: T,
+  fieldName: string
+): Array<T[number]> | undefined {
+  if (!values) return undefined;
+  const allowedValues = new Set<string>(allowed);
+  return values.map((value) => {
+    if (!allowedValues.has(value)) {
+      throw new MemoryFSError(`${fieldName} contains unsupported value: ${value}`, 400);
+    }
+    return value as T[number];
+  });
+}
+
 export class MemoryFS {
   readonly archive: ArchiveApi;
   readonly dataDir: string;

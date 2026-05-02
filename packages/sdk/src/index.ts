@@ -22,6 +22,7 @@ import type {
   MemoryGraphEdgePacket,
   MemoryGraphNodeResponse,
   MemoryGraphObjectType,
+  MemoryGrepOptions,
   MemoryGrepMode,
   MemoryGrepResponse,
   MemoryHealthReport,
@@ -55,6 +56,17 @@ import type {
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
+
+export class MemoryFSClientError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: number
+  ) {
+    super(message);
+  }
+}
+
+export class MemoryFSNotFoundError extends MemoryFSClientError {}
 
 export interface ClientWriteOptions {
   actor?: string;
@@ -101,7 +113,7 @@ export interface ClientRecallOptions {
 
 export interface ClientGrepOptions {
   mode?: MemoryGrepMode;
-  scope?: string | string[];
+  scope?: MemoryGrepOptions["scope"];
   project_id?: string;
   project_slug?: string;
   repo_id?: string;
@@ -933,7 +945,9 @@ export class MemoryFSClient {
 
     if (!response.ok) {
       const errorBody = (await response.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(errorBody?.error ?? `MemoryFS request failed with ${response.status}.`);
+      const message = errorBody?.error ?? `MemoryFS request failed with ${response.status}.`;
+      if (response.status === 404) throw new MemoryFSNotFoundError(message, response.status);
+      throw new MemoryFSClientError(message, response.status);
     }
 
     return response.json() as Promise<T>;
@@ -1259,5 +1273,5 @@ function runArtifactForKind(kind: string): string {
 }
 
 function isMissingResourceError(error: unknown): boolean {
-  return error instanceof Error && /not found|no such|does not exist/i.test(error.message);
+  return error instanceof MemoryFSNotFoundError;
 }

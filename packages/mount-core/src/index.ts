@@ -1,5 +1,5 @@
 import { MemoryFS, normalizeMemoryPath, type AuditEvent, type BriefRequest, type BriefResponse, type FileRecord, type MemoryGrepOptions, type MemoryGrepResponse, type MemoryHealthReport, type RecallOptions, type RecallResponse, type Workspace } from "@memoryfs/core";
-import { MemoryFSClient, type DeleteFilePacket, type FileReadPacket, type JsonObject } from "@memoryfs/sdk";
+import { MemoryFSClient, MemoryFSNotFoundError, type DeleteFilePacket, type FileReadPacket, type JsonObject } from "@memoryfs/sdk";
 import path from "node:path";
 
 export type MountMode = "read-only" | "read-write";
@@ -637,7 +637,7 @@ class MemoryFsMountCore implements MountCore {
           "MOUNT_PROTECTED_PATH_DENIED"
         );
       }
-      if (/not found|no such|does not exist/i.test(message)) throw new MountCoreError("ENOENT", message, error);
+      if (isNotFoundClientError(error)) throw new MountCoreError("ENOENT", message, error);
       throw new MountCoreError("EINVAL", message, error, "MOUNT_WRITE_FAILED");
     }
   }
@@ -696,6 +696,11 @@ function asArray<T>(value: unknown): T[] {
 
 function isMissing(error: unknown): boolean {
   return error instanceof MountCoreError && error.code === "ENOENT";
+}
+
+function isNotFoundClientError(error: unknown): boolean {
+  return error instanceof MemoryFSNotFoundError ||
+    (error instanceof Error && "statusCode" in error && error.statusCode === 404);
 }
 
 function renderRecallResults(title: string, response: RecallResponse | null): string {

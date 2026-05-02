@@ -119,9 +119,21 @@ const metadataMemoryNodeColumns = [
   "updated_at"
 ] as const;
 
-const metadataMemoryNodeUpdatableColumns = metadataMemoryNodeColumns.filter(
-  (column) => column !== "id" && column !== "created_at"
-);
+const metadataMemoryNodeUpdatableColumns = [
+  "summary",
+  "trigger",
+  "detail",
+  "scope",
+  "project_id",
+  "project_slug",
+  "repo_id",
+  "repo_path",
+  "session_id",
+  "agent_id",
+  "contact_id",
+  "run_id",
+  "updated_at"
+] satisfies Array<(typeof metadataMemoryNodeColumns)[number]>;
 
 type MetadataSqlValue = string | number | null;
 
@@ -281,6 +293,7 @@ export class PostgresMetadataStore implements MetadataStore {
     }
     await this.client.connect?.();
     await this.client.query(postgresMigrationSql);
+    await this.client.query(postgresCompatibilityMigrationSql);
   }
 
   async close(): Promise<void> {
@@ -387,6 +400,18 @@ export const postgresMigrationSql = initialMigrationSql
   .replace(/PRAGMA foreign_keys = ON;/g, "")
   .replace(/INTEGER NOT NULL DEFAULT 1/g, "INTEGER NOT NULL DEFAULT 1")
   .replace(/ON DELETE SET NULL/g, "ON DELETE SET NULL");
+
+export const postgresCompatibilityMigrationSql = `
+ALTER TABLE memory_nodes ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'workspace';
+ALTER TABLE memory_nodes ADD COLUMN IF NOT EXISTS project_id TEXT;
+ALTER TABLE memory_nodes ADD COLUMN IF NOT EXISTS project_slug TEXT;
+ALTER TABLE memory_nodes ADD COLUMN IF NOT EXISTS repo_id TEXT;
+ALTER TABLE memory_nodes ADD COLUMN IF NOT EXISTS repo_path TEXT;
+ALTER TABLE memory_nodes ADD COLUMN IF NOT EXISTS session_id TEXT;
+ALTER TABLE memory_nodes ADD COLUMN IF NOT EXISTS agent_id TEXT;
+ALTER TABLE memory_nodes ADD COLUMN IF NOT EXISTS contact_id TEXT;
+ALTER TABLE memory_nodes ADD COLUMN IF NOT EXISTS run_id TEXT;
+`;
 
 function isoNow(): string {
   return new Date().toISOString();

@@ -14,10 +14,6 @@ importers:
       '@memoryfs/core':
         specifier: workspace:*
         version: link:packages/core
-    optionalDependencies:
-      fuse-native:
-        specifier: ^2.2.6
-        version: 2.2.6
     devDependencies:
       '@types/node':
         specifier: ^22.10.2

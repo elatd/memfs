@@ -463,8 +463,16 @@ describe("MemoryFS core", () => {
 
     await expect(
       memoryfs.archive.importText(workspace.id, {
-        title: "Unsafe transcript",
+        title: "Unsafe token transcript",
         content: "token = github_pat_1234567890abcdefghijklmnopqrstuvwxyz",
+        actor: "human:test"
+      })
+    ).rejects.toThrow(/secret/i);
+
+    await expect(
+      memoryfs.archive.importText(workspace.id, {
+        title: "Unsafe password transcript",
+        content: "password = abcdefghijklmnopqrstuvwxyz",
         actor: "human:test"
       })
     ).rejects.toThrow(/secret/i);

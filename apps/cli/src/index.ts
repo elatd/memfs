@@ -4,13 +4,14 @@ import {
   memoryRelationTypes,
   memoryScopes,
   memoryTrustLevels,
+  parseStringUnion,
   type BriefResponse as CoreBriefResponse,
   type MemoryGraphObjectType,
   type MemoryRelationType,
   type MemoryScope,
   type MemoryTrustLevel
 } from "@memoryfs/core";
-import { MemoryFSClient } from "@memoryfs/sdk";
+import { MemoryFSClient, MemoryFSNotFoundError } from "@memoryfs/sdk";
 import { listMountRegistry, runMountd, unmountMount, type MountRegistryEntry } from "@memoryfs/mountd";
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -1337,7 +1338,7 @@ async function memoryGrepCommand(
     const cleaned = required(grep.query.trim(), `memfs ${commandName} requires a query.`);
     const response = (await client.grepMemory(workspaceId, cleaned, {
       mode: grep.mode,
-      scope: parseMemoryScopes(grep.scope),
+      scope: parseGrepScopes(grep.scope),
       project_slug: grep.project_slug,
       repo_path: grep.repo_path,
       session_id: grep.session_id,
@@ -1905,7 +1906,11 @@ function optionValue(args: string[], name: string): string | undefined {
 }
 
 function parseMemoryScopes(values: string[] | undefined): MemoryScope[] | undefined {
-  return values ? parseStringUnion(values, memoryScopes, "scope") : undefined;
+  return parseStringUnion(values, memoryScopes, "scope");
+}
+
+function parseGrepScopes(values: string[] | undefined): string[] | undefined {
+  return values?.length ? values : undefined;
 }
 
 function parseMemoryTrustLevel(value: string | undefined): MemoryTrustLevel | undefined {
@@ -1914,27 +1919,12 @@ function parseMemoryTrustLevel(value: string | undefined): MemoryTrustLevel | un
 
 function parseGraphObjectType(value: string): MemoryGraphObjectType {
   const parsed = parseStringUnion([value], memoryGraphObjectTypes, "graph object type");
-  return parsed[0];
+  return parsed![0]!;
 }
 
 function parseMemoryRelationType(value: string): MemoryRelationType {
   const parsed = parseStringUnion([value], memoryRelationTypes, "relation type");
-  return parsed[0];
-}
-
-function parseStringUnion<const T extends readonly string[]>(
-  values: string[] | undefined,
-  allowed: T,
-  fieldName: string
-): Array<T[number]> {
-  if (!values) return [];
-  const allowedValues = new Set<string>(allowed);
-  return values.map((value) => {
-    if (!allowedValues.has(value)) {
-      throw new Error(`${fieldName} contains unsupported value: ${value}`);
-    }
-    return value as T[number];
-  });
+  return parsed![0]!;
 }
 
 function candidateListOptions(args: string[]): Record<string, unknown> {
@@ -2110,7 +2100,7 @@ function isString(value: string | undefined): value is string {
 }
 
 function isMissingResourceError(error: unknown): boolean {
-  return error instanceof Error && /not found|no such|does not exist/i.test(error.message);
+  return error instanceof MemoryFSNotFoundError;
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

@@ -29,9 +29,6 @@
   "dependencies": {
     "@memoryfs/core": "workspace:*"
   },
-  "optionalDependencies": {
-    "fuse-native": "^2.2.6"
-  },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "concurrently": "^9.1.2",

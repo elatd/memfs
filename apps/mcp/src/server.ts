@@ -4,6 +4,7 @@ import {
   memoryScopes,
   memoryTrustLevels,
   memoryTypes,
+  parseStringUnion,
   recallModes,
   type MemoryGrepOptions,
   type MemoryTrustLevel,
@@ -1350,21 +1351,6 @@ function parseMemoryTypes(values: string[] | undefined): MemoryType[] | undefine
 
 function parseMemoryTrustLevels(values: string[] | undefined): MemoryTrustLevel[] | undefined {
   return parseStringUnion(values, memoryTrustLevels, "trust_levels");
-}
-
-function parseStringUnion<const T extends readonly string[]>(
-  values: string[] | undefined,
-  allowed: T,
-  fieldName: string
-): Array<T[number]> | undefined {
-  if (!values) return undefined;
-  const allowedValues = new Set<string>(allowed);
-  return values.map((value) => {
-    if (!allowedValues.has(value)) {
-      throw new Error(`${fieldName} contains unsupported value: ${value}`);
-    }
-    return value as T[number];
-  });
 }
 
 function requireAbsolutePath(value: string | undefined): string {
