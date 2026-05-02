@@ -70,13 +70,16 @@ export interface McpToolHandlers {
     query: string;
     limit?: number;
     project_hint?: string;
-    scope?: RecallOptions["scope"];
+    scope?: MemoryGrepOptions["scope"];
     project_slug?: string;
     repo_path?: string;
     session_id?: string;
     agent_id?: string;
     contact_id?: string;
     run_id?: string;
+    trust_min?: MemoryGrepOptions["trust_min"];
+    include_runs?: boolean;
+    include_sources?: boolean;
     include_stale?: boolean;
   }) => Promise<unknown>;
   memfs_memory_recall: (input: {
@@ -298,7 +301,7 @@ export function createMemfsMcpToolHandlers(memoryfs: MemoryFS): McpToolHandlers 
     memfs_memory_search: async ({
       workspace_id,
       query,
-      limit = 8,
+      limit = 20,
       project_hint,
       scope,
       project_slug,
@@ -307,12 +310,14 @@ export function createMemfsMcpToolHandlers(memoryfs: MemoryFS): McpToolHandlers 
       agent_id,
       contact_id,
       run_id,
+      trust_min,
+      include_runs = true,
+      include_sources = true,
       include_stale = false
     }) =>
-      memoryfs.searchMemory(workspace_id, requireNonEmpty(query, "query"), {
+      memoryfs.grepMemory(workspace_id, requireNonEmpty(query, "query"), {
+        mode: "hybrid",
         limit,
-        include_detail: true,
-        include_raw: false,
         project_hint,
         scope,
         project_slug,
@@ -321,6 +326,9 @@ export function createMemfsMcpToolHandlers(memoryfs: MemoryFS): McpToolHandlers 
         agent_id,
         contact_id,
         run_id,
+        trust_min,
+        include_runs,
+        include_sources,
         include_stale
       }),
     memfs_memory_recall: async ({
@@ -574,7 +582,58 @@ export function createMemfsMcpServer(memoryfs: MemoryFS): McpServer {
   return server;
 }
 
+const memoryScopeValues = ["global", "workspace", "project", "repo", "session", "agent", "contact", "run"] as const;
+const trustLevelValues = ["ephemeral", "agent_generated", "source_backed", "reviewed", "trusted", "superseded", "rejected"] as const;
+
+function memfsGrepToolSchema() {
+  return {
+    workspace_id: z.string(),
+    query: z.string(),
+    mode: z.enum(["literal", "semantic", "hybrid"]).default("literal"),
+    scope: z.array(z.string()).optional(),
+    project_slug: z.string().optional(),
+    repo_path: z.string().optional(),
+    session_id: z.string().optional(),
+    agent_id: z.string().optional(),
+    contact_id: z.string().optional(),
+    run_id: z.string().optional(),
+    trust_min: z.enum(trustLevelValues).optional(),
+    include_runs: z.boolean().default(true),
+    include_sources: z.boolean().default(true),
+    include_stale: z.boolean().default(false),
+    limit: z.number().int().positive().default(20)
+  };
+}
+
+function memfsMemorySearchToolSchema() {
+  return {
+    workspace_id: z.string(),
+    query: z.string(),
+    limit: z.number().int().positive().default(20),
+    project_hint: z.string().optional(),
+    scope: z.array(z.enum(memoryScopeValues)).optional(),
+    project_slug: z.string().optional(),
+    repo_path: z.string().optional(),
+    session_id: z.string().optional(),
+    agent_id: z.string().optional(),
+    contact_id: z.string().optional(),
+    run_id: z.string().optional(),
+    trust_min: z.enum(trustLevelValues).optional(),
+    include_runs: z.boolean().default(true),
+    include_sources: z.boolean().default(true),
+    include_stale: z.boolean().default(false)
+  };
+}
+
+export function createMemfsMcpToolSchemas() {
+  return {
+    memfs_grep: memfsGrepToolSchema(),
+    memfs_memory_search: memfsMemorySearchToolSchema()
+  };
+}
+
 function registerTools(server: McpServer, handlers: McpToolHandlers): void {
+  const schemas = createMemfsMcpToolSchemas();
   server.tool("memfs_workspace_list", "List MemFS workspaces.", {}, async () =>
     textResult(await handlers.memfs_workspace_list())
   );
@@ -671,42 +730,13 @@ function registerTools(server: McpServer, handlers: McpToolHandlers): void {
   server.tool(
     "memfs_grep",
     "Exact grep over MemFS files by default. Pass mode=hybrid or mode=semantic for meaning-oriented matching.",
-    {
-      workspace_id: z.string(),
-      query: z.string(),
-      mode: z.enum(["literal", "semantic", "hybrid"]).default("literal"),
-      scope: z.array(z.string()).optional(),
-      project_slug: z.string().optional(),
-      repo_path: z.string().optional(),
-      session_id: z.string().optional(),
-      agent_id: z.string().optional(),
-      contact_id: z.string().optional(),
-      run_id: z.string().optional(),
-      trust_min: z.enum(["ephemeral", "agent_generated", "source_backed", "reviewed", "trusted", "superseded", "rejected"]).optional(),
-      include_runs: z.boolean().default(true),
-      include_sources: z.boolean().default(true),
-      include_stale: z.boolean().default(false),
-      limit: z.number().int().positive().default(20)
-    },
+    schemas.memfs_grep,
     async (input) => textResult(await handlers.memfs_grep(input))
   );
   server.tool(
     "memfs_memory_search",
-    "Search MemFS memory nodes with hybrid retrieval. Returns source_path and raw_ref, not raw source content.",
-    {
-      workspace_id: z.string(),
-      query: z.string(),
-      limit: z.number().int().positive().default(8),
-      project_hint: z.string().optional(),
-      scope: z.array(z.enum(["global", "workspace", "project", "repo", "session", "agent", "contact", "run"])).optional(),
-      project_slug: z.string().optional(),
-      repo_path: z.string().optional(),
-      session_id: z.string().optional(),
-      agent_id: z.string().optional(),
-      contact_id: z.string().optional(),
-      run_id: z.string().optional(),
-      include_stale: z.boolean().default(false)
-    },
+    "Meaning-oriented hybrid search over MemFS sources and memory records. Equivalent to memfs_grep with mode=hybrid and returns the same grep/search result shape.",
+    schemas.memfs_memory_search,
     async (input) => textResult(await handlers.memfs_memory_search(input))
   );
   server.tool(
@@ -998,10 +1028,10 @@ function registerTools(server: McpServer, handlers: McpToolHandlers): void {
   );
 
   registerOpenClawAliases(server, handlers);
-  registerLegacyAliases(server, handlers);
 }
 
 function registerOpenClawAliases(server: McpServer, handlers: McpToolHandlers): void {
+  const schemas = createMemfsMcpToolSchemas();
   server.tool("workspace_list", "List MemFS workspaces before selecting where an agent should work.", {}, async () =>
     textResult(await handlers.memfs_workspace_list())
   );
@@ -1066,21 +1096,8 @@ function registerOpenClawAliases(server: McpServer, handlers: McpToolHandlers): 
   );
   server.tool(
     "memory_search",
-    "Search source-backed memory nodes. Returns source references, not raw source content.",
-    {
-      workspace_id: z.string(),
-      query: z.string(),
-      limit: z.number().int().positive().default(8),
-      project_hint: z.string().optional(),
-      scope: z.array(z.enum(["global", "workspace", "project", "repo", "session", "agent", "contact", "run"])).optional(),
-      project_slug: z.string().optional(),
-      repo_path: z.string().optional(),
-      session_id: z.string().optional(),
-      agent_id: z.string().optional(),
-      contact_id: z.string().optional(),
-      run_id: z.string().optional(),
-      include_stale: z.boolean().default(false)
-    },
+    "Meaning-oriented hybrid search over MemFS sources and memory records. Returns the grep/search result shape without raw source content.",
+    schemas.memfs_memory_search,
     async (input) => textResult(await handlers.memfs_memory_search(input))
   );
   server.tool(
@@ -1274,119 +1291,6 @@ function registerOpenClawAliases(server: McpServer, handlers: McpToolHandlers): 
     "Read or recompute the workspace memory health report.",
     { workspace_id: z.string(), recompute: z.boolean().default(false) },
     async (input) => textResult(await handlers.memfs_memory_health(input))
-  );
-}
-
-function registerLegacyAliases(server: McpServer, handlers: McpToolHandlers): void {
-  server.tool("memoryfs_workspace_list", "Alias for memfs_workspace_list.", {}, async () =>
-    textResult(await handlers.memfs_workspace_list())
-  );
-  server.tool(
-    "memoryfs_file_list",
-    "Alias for memfs_file_list.",
-    { workspace_id: z.string() },
-    async (input) => textResult(await handlers.memfs_file_list(input))
-  );
-  server.tool(
-    "memoryfs_file_read",
-    "Alias for memfs_file_read.",
-    { workspace_id: z.string(), path: z.string() },
-    async (input) => textResult(await handlers.memfs_file_read(input))
-  );
-  server.tool(
-    "memoryfs_file_write",
-    "Alias for memfs_file_write.",
-    {
-      workspace_id: z.string(),
-      path: z.string(),
-      content: z.string(),
-      actor: z.string().default("agent:mcp"),
-      ingest: z.boolean().default(true),
-      allow_protected_write: z.boolean().default(false)
-    },
-    async (input) => textResult(await handlers.memfs_file_write(input))
-  );
-  server.tool(
-    "memoryfs_grep",
-    "Alias for memfs_grep.",
-    {
-      workspace_id: z.string(),
-      query: z.string(),
-      mode: z.enum(["literal", "semantic", "hybrid"]).default("literal"),
-      scope: z.array(z.string()).optional(),
-      project_slug: z.string().optional(),
-      repo_path: z.string().optional(),
-      session_id: z.string().optional(),
-      agent_id: z.string().optional(),
-      contact_id: z.string().optional(),
-      run_id: z.string().optional(),
-	      trust_min: z.enum(["ephemeral", "agent_generated", "source_backed", "reviewed", "trusted", "superseded", "rejected"]).optional(),
-	      include_runs: z.boolean().default(true),
-	      include_sources: z.boolean().default(true),
-	      include_stale: z.boolean().default(false),
-	      limit: z.number().int().positive().default(20)
-    },
-    async (input) => textResult(await handlers.memfs_grep(input))
-  );
-  server.tool(
-    "memoryfs_memory_search",
-    "Alias for memfs_memory_search.",
-    {
-      workspace_id: z.string(),
-      query: z.string(),
-      limit: z.number().int().positive().default(8),
-      project_hint: z.string().optional(),
-      scope: z.array(z.enum(["global", "workspace", "project", "repo", "session", "agent", "contact", "run"])).optional(),
-      project_slug: z.string().optional(),
-      repo_path: z.string().optional(),
-      session_id: z.string().optional(),
-	      agent_id: z.string().optional(),
-	      contact_id: z.string().optional(),
-	      run_id: z.string().optional(),
-	      include_stale: z.boolean().default(false)
-    },
-    async (input) => textResult(await handlers.memfs_memory_search(input))
-  );
-  server.tool(
-    "memoryfs_memory_recall",
-    "Alias for memfs_memory_recall.",
-    {
-      workspace_id: z.string(),
-      query: z.string(),
-      limit: z.number().int().positive().default(8),
-      include_detail: z.boolean().default(true),
-      include_raw: z.boolean().default(false),
-      include_why: z.boolean().default(false),
-      include_contradictions: z.boolean().default(false),
-	      include_links: z.boolean().default(false),
-	      include_trust: z.boolean().default(false),
-	      include_rejected: z.boolean().default(false),
-	      include_stale: z.boolean().default(false),
-	      mode: z.enum(["general", "task_preparation", "fact_lookup", "debugging", "handoff", "research", "decision_review"]).optional(),
-      memory_types: z.array(z.string()).optional(),
-      trust_levels: z.array(z.string()).optional(),
-      project_hint: z.string().optional(),
-      scope: z.array(z.enum(["global", "workspace", "project", "repo", "session", "agent", "contact", "run"])).optional(),
-      project_slug: z.string().optional(),
-      repo_path: z.string().optional(),
-      session_id: z.string().optional(),
-      agent_id: z.string().optional(),
-      contact_id: z.string().optional(),
-      run_id: z.string().optional()
-    },
-    async (input) => textResult(await handlers.memfs_memory_recall(input))
-  );
-  server.tool(
-    "memoryfs_memory_node_read",
-    "Alias for memfs_memory_node_read.",
-    { workspace_id: z.string(), node_id: z.string() },
-    async (input) => textResult(await handlers.memfs_memory_node_read(input))
-  );
-  server.tool(
-    "memoryfs_memory_raw_read",
-    "Alias for memfs_memory_raw_read.",
-    { workspace_id: z.string(), node_id: z.string() },
-    async (input) => textResult(await handlers.memfs_memory_raw_read(input))
   );
 }
 

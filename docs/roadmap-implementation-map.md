@@ -49,10 +49,9 @@ Existing.
 Existing behavior:
 
 - `apps/cli/src/index.ts` implements `memfs grep <query>` as exact text search by default and `memfs search <query>` as meaning-oriented hybrid search.
-- `memfs sgrep <query>` is a deprecated compatibility alias for `memfs search --semantic <query>`.
-- `packages/virtual-bash/src/index.ts` follows the same split: `grep` exact, `search` hybrid, `sgrep` as a semantic alias.
+- `packages/virtual-bash/src/index.ts` follows the same split: `grep` exact and `search` hybrid.
 - `packages/core/src/index.ts` exposes `grepMemory(...)` with `literal`, `semantic`, and `hybrid` modes; the default mode is `literal`.
-- `packages/core/src/index.ts` has `searchMemory(...)` as a recall-shaped meaning search for compatibility.
+- `packages/core/src/index.ts` still has `searchMemory(...)` as an older recall-shaped meaning search; unify it with hybrid search if keeping the API-level search entrypoint.
 - `recallMemory(...)` scores trigger, summary, keyword, detail/raw excerpt embeddings, importance, recency, path/project match, and graph score.
 - `apps/mcp/src/server.ts` exposes both `memfs_grep` and `memfs_memory_search`.
 - `packages/mount-core/src/index.ts` exposes `.memfs/search.query` as meaning-oriented hybrid search.
@@ -60,7 +59,7 @@ Existing behavior:
 Remaining possible improvements:
 
 - Consider an SQLite FTS table if literal search over large workspaces becomes too slow.
-- Keep API `/memory/search` response compatibility in mind if unifying all search result shapes later.
+- Prefer one public search result shape if `/memory/search` is kept.
 
 ### Likely Model And DB Changes
 
@@ -83,7 +82,7 @@ Files:
 - Add or extend:
   - `POST /workspaces/:id/memory/grep`
   - Or extend `POST /workspaces/:id/memory/search` with `mode`, `scope`, `trust_min`, `include_sources`, `include_literal`, `include_semantic`.
-- Keep `/memory/search` backward compatible.
+- Return the unified search shape from `/memory/search`, or make clients call `/memory/grep` with `mode=hybrid`.
 
 Files:
 
@@ -102,7 +101,7 @@ Files:
   - `--include-runs`
   - `--scope <scope>`
   - `--limit <n>`
-- Keep `memfs sgrep` only as a compatibility alias for `memfs search --semantic`.
+- Semantic-only search is available through `memfs search --semantic`; there is no separate shortcut.
 
 Files:
 
@@ -121,7 +120,7 @@ Files:
   - `limit`
   - `include_sources`
   - `include_runs`
-- Keep `memfs_memory_search` as compatibility wrapper.
+- Keep `memfs_memory_search` as the MCP meaning-oriented hybrid search entrypoint, backed by `grepMemory(..., mode: "hybrid")`.
 
 Files:
 
@@ -1005,7 +1004,6 @@ Existing tools:
 - Briefs/runs/handoff/stale memory
 - Snapshots: create/list
 - Sync: status/pull/push/conflict list
-- Legacy `memoryfs_*` aliases for selected tools
 
 Missing current-implementation tools:
 
@@ -1091,7 +1089,7 @@ Files:
 ## Suggested Build Order
 
 1. Normalize public search types.
-   - Add shared `MemoryGrepOptions`/`MemoryGrepResponse` and keep existing recall/search backward compatible.
+   - Add shared `MemoryGrepOptions`/`MemoryGrepResponse` and make public search surfaces return that shape.
 2. Add explicit scopes and temporal fields.
    - These are foundational filters needed by grep, briefs, candidates, graph traversal, and MCP.
 3. Implement API-level hybrid grep.

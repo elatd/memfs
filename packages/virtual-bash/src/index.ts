@@ -61,8 +61,6 @@ export class MemoryFsShell {
         return this.grep(args);
       case "search":
         return this.search(args);
-      case "sgrep":
-        return this.sgrep(args);
       case "recall":
         return this.recall(requiredArg(args[0], "recall requires a query."));
       case "brief":
@@ -175,11 +173,6 @@ export class MemoryFsShell {
       limit: parsed.limit
     });
     return result("search", search, formatGrep(search));
-  }
-
-  private async sgrep(args: string[]): Promise<ShellExecResult<MemoryGrepResponse>> {
-    const search = await this.search(["--semantic", ...args]);
-    return result("sgrep", search.data, search.displayText);
   }
 
   private async recall(query: string): Promise<ShellExecResult<RecallResponse>> {
@@ -518,6 +511,7 @@ function formatGrep(response: MemoryGrepResponse): string {
         `   trust: ${item.trust ?? "unknown"}${node}`,
         `   why: ${matchReason(item.match_type)}`,
         `   snippet: ${item.snippet}`,
+        `   source: ${item.source_path}`,
         raw ? `   ${raw.trim()}` : ""
       ]
         .filter(Boolean)

@@ -55,17 +55,6 @@ Preferred tools:
 - `memfs_sync_push`
 - `memfs_sync_conflict_list`
 
-`memfs_memory_recall` supports explainable recall fields including `mode`, `memory_types`, `trust_levels`, `include_why`, `include_links`, `include_contradictions`, `include_trust`, `include_rejected`, and `include_raw`. Results keep `source_path` and `raw_ref` visible; raw source is returned only when explicitly requested.
+`memfs_memory_search` runs meaning-oriented hybrid search and returns the same grep/search result shape as `memfs_grep` with `mode=hybrid`. `memfs_memory_recall` supports explainable recall fields including `mode`, `memory_types`, `trust_levels`, `include_why`, `include_links`, `include_contradictions`, `include_trust`, `include_rejected`, and `include_raw`. Results keep `source_path` and `raw_ref` visible; raw source is returned only when explicitly requested.
 
 MCP agents can propose promotions, create snapshots, list snapshots, create briefs and runs, log task events, compile runs, create handoffs, list stale memory, inspect workspace-scoped sync status, and read memory health. Approval, rejection, conflict resolution, and team administration tools are intentionally not exposed by default.
-
-Legacy aliases are kept for compatibility:
-
-- `memoryfs_workspace_list`
-- `memoryfs_file_list`
-- `memoryfs_file_read`
-- `memoryfs_file_write`
-- `memoryfs_memory_search`
-- `memoryfs_memory_recall`
-- `memoryfs_memory_node_read`
-- `memoryfs_memory_raw_read`

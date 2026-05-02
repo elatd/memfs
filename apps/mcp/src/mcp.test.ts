@@ -3,7 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createMemfsMcpServer, createMemfsMcpToolHandlers, type McpToolHandlers } from "./server.js";
+import { z } from "zod";
+import { createMemfsMcpToolHandlers, createMemfsMcpToolSchemas, type McpToolHandlers } from "./server.js";
 
 let tempDir: string;
 let memoryfs: MemoryFS;
@@ -29,12 +30,9 @@ afterEach(async () => {
 
 describe("MemFS MCP handlers", () => {
   it("defaults MCP grep tool schemas to literal mode", () => {
-    const server = createMemfsMcpServer(memoryfs) as unknown as {
-      _registeredTools: Record<string, { inputSchema: { parse: (input: unknown) => { mode: string } } }>;
-    };
+    const schemas = createMemfsMcpToolSchemas();
 
-    expect(server._registeredTools.memfs_grep?.inputSchema.parse({ workspace_id: workspaceId, query: "OAuth" }).mode).toBe("literal");
-    expect(server._registeredTools.memoryfs_grep?.inputSchema.parse({ workspace_id: workspaceId, query: "OAuth" }).mode).toBe("literal");
+    expect(z.object(schemas.memfs_grep).parse({ workspace_id: workspaceId, query: "OAuth" }).mode).toBe("literal");
   });
 
   it("reads and writes files", async () => {
@@ -136,6 +134,32 @@ describe("MemFS MCP handlers", () => {
     expect(grep.results[0]?.raw_ref).toContain("memoryfs://");
     expect(grep.results[0]?.match_type).toBe("literal");
     expect(typeof grep.results[0]?.score).toBe("number");
+  });
+
+  it("routes memory search through the hybrid grep result shape", async () => {
+    await handlers.memfs_file_write({
+      workspace_id: workspaceId,
+      path: "/scratch/search.md",
+      content: "Decision: MCP search should use the unified hybrid retrieval shape.",
+      ingest: true
+    });
+
+    const search = (await handlers.memfs_memory_search({
+      workspace_id: workspaceId,
+      query: "unified hybrid retrieval"
+    })) as {
+      mode: string;
+      results: Array<{ path: string; source_path: string; raw_ref: string | null; match_type: string; summary?: string }>;
+    };
+
+    expect(search.mode).toBe("hybrid");
+    expect(search.results[0]).toMatchObject({
+      path: "/scratch/search.md",
+      source_path: "/scratch/search.md",
+      match_type: "literal"
+    });
+    expect(search.results[0]?.raw_ref).toContain("memoryfs://");
+    expect(search.results[0]?.summary).toBeUndefined();
   });
 
   it("accepts scope filters on grep and recall tools", async () => {

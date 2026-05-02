@@ -409,8 +409,6 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
         return await memoryGrepCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString), "grep", "literal");
       case "search":
         return await memoryGrepCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString), "search", "hybrid");
-      case "sgrep":
-        return await memoryGrepCommand(client, env, io, parsed, ["--semantic", subcommand, ...rest].filter(isString), "sgrep", "hybrid");
       case "recall":
         return await recallCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString));
       case "node":
@@ -1324,7 +1322,7 @@ async function memoryGrepCommand(
   io: CliIo,
   parsed: ParsedArgs,
   args: string[],
-  commandName: "grep" | "search" | "sgrep",
+  commandName: "grep" | "search",
   defaultMode: "literal" | "semantic" | "hybrid"
 ): Promise<number> {
   return withWorkspace(client, env, io, parsed, async (workspaceId) => {

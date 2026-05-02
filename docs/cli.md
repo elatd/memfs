@@ -108,7 +108,7 @@ Starting a task?  use recall or brief
 Need proof?       open source_path or raw_ref
 ```
 
-`memfs grep` is exact text search by default. Use `memfs search` for meaning-oriented hybrid search, and `memfs recall` for curated task context. `memfs sgrep` remains as a deprecated compatibility alias for `memfs search --semantic`, but it is not the primary interface.
+`memfs grep` is exact text search by default. Use `memfs search` for meaning-oriented hybrid search, `memfs search --semantic` for semantic-only search, and `memfs recall` for curated task context.
 
 `memfs raw` is the explicit raw source command. Grep, search, and recall do not fetch raw source content by default.
 
