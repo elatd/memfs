@@ -2,6 +2,7 @@ import type { MemoryRetrievedItem } from "../adapters/memory-system-adapter.js";
 
 export interface SourceRefGrade {
   score: number;
+  precision: number;
   recall: number;
   exactMatch: boolean;
   expectedSourceIds: string[];
@@ -33,6 +34,7 @@ export function gradeSourceRefs(
     const exactMatch = retrievedIds.length === 0;
     return {
       score: exactMatch ? 1 : 0,
+      precision: exactMatch ? 1 : 0,
       recall: exactMatch ? 1 : 0,
       exactMatch,
       expectedSourceIds,
@@ -43,12 +45,15 @@ export function gradeSourceRefs(
   }
 
   const hits = expectedSourceIds.filter((sourceId) => retrievedSet.has(sourceId)).length;
+  const precision = retrievedIds.length === 0 ? 0 : hits / retrievedIds.length;
   const recall = hits / expectedSourceIds.length;
+  const score = precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall);
   const missingSourceIds = expectedSourceIds.filter((sourceId) => !retrievedSet.has(sourceId));
   const unexpectedSourceIds = retrievedIds.filter((sourceId) => !expected.has(sourceId));
 
   return {
-    score: recall,
+    score,
+    precision,
     recall,
     exactMatch: missingSourceIds.length === 0 && unexpectedSourceIds.length === 0,
     expectedSourceIds,

@@ -1,4 +1,5 @@
 import { MemoryFS, type MemoryGrepResult } from "@memoryfs/core";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -133,12 +134,18 @@ export class MemFSAdapter implements MemorySystemAdapter {
   }
 }
 
-function sourcePathFor(sourceId: string, metadata?: MemoryMetadata): string {
+export function sourcePathFor(sourceId: string, metadata?: MemoryMetadata): string {
   if (typeof metadata?.path === "string" && metadata.path.startsWith("/")) {
     return metadata.path;
   }
 
-  return `/benchmarks/smoke/${sourceId.replace(/[^a-zA-Z0-9._-]+/g, "-")}.md`;
+  const slug = sourceId
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64) || "source";
+  const hash = createHash("sha256").update(sourceId).digest("hex").slice(0, 12);
+
+  return `/benchmarks/smoke/${slug}-${hash}.md`;
 }
 
 function uniqueBySource(items: MemoryRetrievedItem[]): MemoryRetrievedItem[] {
