@@ -14,10 +14,11 @@ importers:
       '@memoryfs/core':
         specifier: workspace:*
         version: link:packages/core
+    optionalDependencies:
+      fuse-native:
+        specifier: ^2.2.6
+        version: 2.2.6
     devDependencies:
-      '@memoryfs/cli':
-        specifier: workspace:*
-        version: link:apps/cli
       '@types/node':
         specifier: ^22.10.2
         version: 22.19.17
@@ -51,6 +52,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@memoryfs/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@memoryfs/mountd':
         specifier: workspace:*
         version: link:../mountd
@@ -183,7 +187,11 @@ importers:
         specifier: workspace:*
         version: link:../sdk
 
-  packages/sdk: {}
+  packages/sdk:
+    dependencies:
+      '@memoryfs/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/virtual-bash:
     dependencies:

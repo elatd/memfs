@@ -1,6 +1,6 @@
 import type { MemoryMetadata, MemoryRetrievedItem } from "../adapters/memory-system-adapter.js";
 
-export interface SmokeBenchmarkSource {
+interface SmokeBenchmarkSource {
   sourceId: string;
   text: string;
   metadata?: MemoryMetadata;

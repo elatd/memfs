@@ -1,4 +1,4 @@
-export interface KeywordMatchResult {
+interface KeywordMatchResult {
   score: number;
   matched: string[];
   missing: string[];

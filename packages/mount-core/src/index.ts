@@ -1,5 +1,5 @@
 import { MemoryFS, normalizeMemoryPath, type AuditEvent, type BriefRequest, type BriefResponse, type FileRecord, type MemoryGrepOptions, type MemoryGrepResponse, type MemoryHealthReport, type RecallOptions, type RecallResponse, type Workspace } from "@memoryfs/core";
-import { MemoryFSClient } from "@memoryfs/sdk";
+import { MemoryFSClient, type DeleteFilePacket, type FileReadPacket, type JsonObject } from "@memoryfs/sdk";
 import path from "node:path";
 
 export type MountMode = "read-only" | "read-write";
@@ -43,28 +43,28 @@ export interface MountCoreOptions {
 
 export interface MountClient {
   getWorkspace?(workspaceId: string): Workspace | Promise<Workspace>;
-  listFiles(workspaceId: string): FileRecord[] | Promise<FileRecord[] | unknown>;
-  readFile(workspaceId: string, filePath: string, options?: { actor?: string }): Promise<{ file: FileRecord; content: string } | unknown>;
+  listFiles(workspaceId: string): FileRecord[] | Promise<FileRecord[]>;
+  readFile(workspaceId: string, filePath: string, options?: { actor?: string }): Promise<FileReadPacket>;
   writeFile?(
     workspaceId: string,
     filePath: string,
     content: string,
     options?: { actor?: string; ingest?: boolean; allow_protected_write?: boolean }
-  ): Promise<FileRecord | unknown>;
+  ): Promise<FileRecord>;
   uploadFile?(
     workspaceId: string,
     filePath: string,
     bytes: Uint8Array | string,
     options?: { actor?: string; ingest?: boolean; allow_protected_write?: boolean; mime_type?: string }
-  ): Promise<FileRecord | unknown>;
-  deleteFile?(workspaceId: string, filePath: string, options?: { actor?: string; allow_protected_write?: boolean }): Promise<void | unknown>;
-  recallMemory?(workspaceId: string, query: string, options?: RecallOptions): Promise<RecallResponse | unknown>;
-  searchMemory?(workspaceId: string, query: string, options?: RecallOptions): Promise<RecallResponse | unknown>;
-  grepMemory?(workspaceId: string, query: string, options?: MemoryGrepOptions): Promise<MemoryGrepResponse | unknown>;
-  createBrief?(workspaceId: string, request: BriefRequest): Promise<BriefResponse | unknown>;
-  listAuditEvents?(workspaceId: string, limit?: number): AuditEvent[] | Promise<AuditEvent[] | unknown>;
-  getMemoryHealth?(workspaceId: string): MemoryHealthReport | Promise<MemoryHealthReport | unknown>;
-  recordAuditEvent?(workspaceId: string, actor: string, eventType: string, payload?: unknown): AuditEvent | Promise<AuditEvent | unknown>;
+  ): Promise<FileRecord>;
+  deleteFile?(workspaceId: string, filePath: string, options?: { actor?: string; allow_protected_write?: boolean }): Promise<void | DeleteFilePacket>;
+  recallMemory?(workspaceId: string, query: string, options?: RecallOptions): Promise<RecallResponse>;
+  searchMemory?(workspaceId: string, query: string, options?: RecallOptions): Promise<RecallResponse>;
+  grepMemory?(workspaceId: string, query: string, options?: MemoryGrepOptions): Promise<MemoryGrepResponse>;
+  createBrief?(workspaceId: string, request: BriefRequest): Promise<BriefResponse>;
+  listAuditEvents?(workspaceId: string, limit?: number): AuditEvent[] | Promise<AuditEvent[]>;
+  getMemoryHealth?(workspaceId: string): MemoryHealthReport | Promise<MemoryHealthReport>;
+  recordAuditEvent?(workspaceId: string, actor: string, eventType: string, payload?: JsonObject): AuditEvent | Promise<AuditEvent>;
 }
 
 export interface MountStat {
@@ -286,7 +286,7 @@ class MemoryFsMountCore implements MountCore {
     const filePath = normalizeMountPath(inputPath);
     if (this.isControlPath(filePath)) return Buffer.from(await this.readControlPath(filePath), "utf8");
     if (await this.directoryExists(filePath)) throw new MountCoreError("EISDIR", `Is a directory: ${filePath}`);
-    const response = asFileRead(await this.client.readFile(this.options.workspaceId, filePath, { actor: this.actor }));
+    const response = await this.client.readFile(this.options.workspaceId, filePath, { actor: this.actor });
     await this.recordAudit("mount.file.read", { path: filePath, size_bytes: response.file.size_bytes });
     return Buffer.from(response.content, "utf8");
   }
@@ -507,14 +507,14 @@ class MemoryFsMountCore implements MountCore {
       if (!this.client.recallMemory) throw new MountCoreError("ENOTSUP", "Client does not support recall.");
       this.control.recallQuery = query;
       try {
-        this.control.recallResponse = asRecallResponse(await this.client.recallMemory(this.options.workspaceId, query, {
+        this.control.recallResponse = await this.client.recallMemory(this.options.workspaceId, query, {
           include_detail: true,
           include_raw: false,
           include_trust: true,
           include_rejected: false,
           include_stale: false,
           limit: 8
-        }));
+        });
       } catch (error) {
         throw new MountCoreError("EINVAL", "Mount recall query failed.", error, "MOUNT_RECALL_FAILED");
       }
@@ -527,17 +527,17 @@ class MemoryFsMountCore implements MountCore {
       this.control.searchQuery = query;
       try {
         this.control.searchResponse = this.client.grepMemory
-          ? asGrepResponse(await this.client.grepMemory(this.options.workspaceId, query, {
+          ? await this.client.grepMemory(this.options.workspaceId, query, {
               mode: "hybrid",
               include_sources: true,
               include_runs: true,
               limit: 8
-            }))
-          : asRecallResponse(await this.client.searchMemory!(this.options.workspaceId, query, {
+            })
+          : await this.client.searchMemory!(this.options.workspaceId, query, {
               include_detail: true,
               include_raw: false,
               limit: 8
-            }));
+            });
       } catch (error) {
         throw new MountCoreError("EINVAL", "Mount search query failed.", error, "MOUNT_SEARCH_FAILED");
       }
@@ -549,7 +549,7 @@ class MemoryFsMountCore implements MountCore {
       if (!this.client.createBrief) throw new MountCoreError("ENOTSUP", "Client does not support briefs.");
       this.control.briefQuery = query;
       try {
-        this.control.briefResponse = asBriefResponse(await this.client.createBrief(this.options.workspaceId, {
+        this.control.briefResponse = await this.client.createBrief(this.options.workspaceId, {
           task: query,
           actor: this.actor,
           create_run: false,
@@ -559,7 +559,7 @@ class MemoryFsMountCore implements MountCore {
           include_open_questions: true,
           include_contradictions: true,
           limit: 8
-        }));
+        });
       } catch (error) {
         throw new MountCoreError("EINVAL", "Mount brief query failed.", error, "MOUNT_BRIEF_FAILED");
       }
@@ -642,11 +642,11 @@ class MemoryFsMountCore implements MountCore {
     }
   }
 
-  private async recordAudit(eventType: string, payload: unknown): Promise<void> {
+  private async recordAudit(eventType: string, payload: JsonObject): Promise<void> {
     if (!this.client.recordAuditEvent) return;
     await this.client.recordAuditEvent(this.options.workspaceId, this.actor, eventType, {
       mount: true,
-      ...asObject(payload)
+      ...payload
     });
   }
 }
@@ -692,57 +692,6 @@ function addChildEntry(entries: Map<string, MountDirEntry>, dirPath: string, can
 
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? value as T[] : [];
-}
-
-function asObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-function asFileRead(value: unknown): { file: FileRecord; content: string } {
-  if (value && typeof value === "object" && "content" in value && "file" in value) {
-    return value as { file: FileRecord; content: string };
-  }
-  throw new MountCoreError("EINVAL", "Client returned an invalid file read response.");
-}
-
-function asRecallResponse(value: unknown): RecallResponse {
-  if (value && typeof value === "object" && "results" in value) {
-    return value as RecallResponse;
-  }
-  return { query: "", results: [] };
-}
-
-function asGrepResponse(value: unknown): MemoryGrepResponse {
-  if (value && typeof value === "object" && "results" in value) {
-    return value as MemoryGrepResponse;
-  }
-  return { query: "", mode: "hybrid", workspace_id: "", results: [] };
-}
-
-function asBriefResponse(value: unknown): BriefResponse {
-  if (value && typeof value === "object" && "brief_markdown" in value && "memory_results" in value) {
-    return value as BriefResponse;
-  }
-  return {
-    brief_markdown: "",
-    sections: {
-      facts: [],
-      decisions: [],
-      constraints: [],
-      preferences: [],
-      previous_failures: [],
-      previous_errors: [],
-      successful_patterns: [],
-      reasoning_memories: [],
-      stale_or_conflicted: [],
-      open_questions: [],
-      suggested_files: [],
-      likely_paths: [],
-      suggested_actions: [],
-      warnings: []
-    },
-    memory_results: []
-  };
 }
 
 function isMissing(error: unknown): boolean {

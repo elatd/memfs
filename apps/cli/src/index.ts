@@ -1,4 +1,15 @@
 #!/usr/bin/env node
+import {
+  memoryGraphObjectTypes,
+  memoryRelationTypes,
+  memoryScopes,
+  memoryTrustLevels,
+  type BriefResponse as CoreBriefResponse,
+  type MemoryGraphObjectType,
+  type MemoryRelationType,
+  type MemoryScope,
+  type MemoryTrustLevel
+} from "@memoryfs/core";
 import { MemoryFSClient } from "@memoryfs/sdk";
 import { listMountRegistry, runMountd, unmountMount, type MountRegistryEntry } from "@memoryfs/mountd";
 import { spawn } from "node:child_process";
@@ -330,12 +341,7 @@ interface AgentRun {
   completed_at: string | null;
 }
 
-interface BriefResponse {
-  brief_markdown: string;
-  sections?: Record<string, unknown>;
-  memory_results?: RecallResult[];
-  run_id?: string;
-}
+type BriefResponse = CoreBriefResponse;
 
 const defaultApiUrl = "http://localhost:3131";
 
@@ -370,7 +376,7 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
       case "use":
         return await useWorkspace(client, env, io, parsed, required(subcommand, "memfs use requires a workspace name or id."));
       case "ls":
-        return await withWorkspace(client, env, io, parsed, async (workspaceId) => {
+        return await withWorkspace(env, async (workspaceId) => {
           const prefix = subcommand ?? "/";
           const files = (await client.listFiles(workspaceId)) as FileRecord[];
           const filtered = files.filter(
@@ -379,7 +385,7 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
           output(io, parsed, filtered.map((file) => file.path).join("\n") || "(no files)", filtered);
         });
       case "cat":
-        return await withWorkspace(client, env, io, parsed, async (workspaceId) => {
+        return await withWorkspace(env, async (workspaceId) => {
           const response = (await client.readFile(
             workspaceId,
             required(subcommand, "memfs cat requires a path.")
@@ -391,7 +397,7 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
       case "append":
         return await writeCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString), true);
       case "rm":
-        return await withWorkspace(client, env, io, parsed, async (workspaceId) => {
+        return await withWorkspace(env, async (workspaceId) => {
           const filePath = required(subcommand, "memfs rm requires a path.");
           const response = await client.deleteFile(workspaceId, filePath, {
             actor: "human:cli",
@@ -416,7 +422,7 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
       case "nodes":
         return await nodeCommand(client, env, io, parsed, "list", [subcommand, ...rest].filter(isString));
       case "raw":
-        return await withWorkspace(client, env, io, parsed, async (workspaceId) => {
+        return await withWorkspace(env, async (workspaceId) => {
           const nodeId = required(subcommand, "memfs raw requires a node id.");
           const response = (await client.readRaw(workspaceId, nodeId)) as { content: string };
           output(io, parsed, response.content, response);
@@ -540,13 +546,13 @@ async function briefCommand(
   parsed: ParsedArgs,
   args: string[]
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const briefArgs = parseBriefArgs(args);
     const cleaned = required(briefArgs.task.trim(), "memfs brief requires a task.");
     const response = (await client.createBrief(workspaceId, cleaned, {
       actor: "human:cli",
       project_hint: briefArgs.project_slug,
-      scope: briefArgs.scope,
+      scope: parseMemoryScopes(briefArgs.scope),
       project_slug: briefArgs.project_slug,
       repo_path: briefArgs.repo_path,
       session_id: briefArgs.session_id,
@@ -571,7 +577,7 @@ async function runCommand(
   rest: string[]
 ): Promise<number> {
   if (subcommand === "create") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const task = required(rest.join(" ").trim(), "memfs run create requires a task.");
       const run = (await client.createRun(workspaceId, task, { actor: "human:cli" })) as AgentRun;
       output(io, parsed, formatRun(run), run);
@@ -579,7 +585,7 @@ async function runCommand(
   }
 
   if (subcommand === "complete") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const runId = required(rest[0], "memfs run complete requires a run id.");
       const result = rest.slice(1).join(" ");
       const run = (await client.completeRun(workspaceId, runId, {
@@ -591,7 +597,7 @@ async function runCommand(
   }
 
   if (subcommand === "compile") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const runId = required(rest[0], "memfs run compile requires a run id.");
       const response = await client.compileRun(workspaceId, runId, {
         actor: "human:cli",
@@ -602,7 +608,7 @@ async function runCommand(
   }
 
   if (subcommand === "lessons") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const runId = required(rest[0], "memfs run lessons requires a run id.");
       const lessons = (await client.listRunLessons(workspaceId, runId)) as ReasoningMemoryCandidate[];
       output(io, parsed, lessons.map(formatReasoningLesson).join("\n\n") || "(no reasoning lessons)", lessons);
@@ -610,7 +616,7 @@ async function runCommand(
   }
 
   if (subcommand === "show") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const runId = required(rest[0], "memfs run show requires a run id.");
       const response = await client.readRun(workspaceId, runId);
       output(io, parsed, JSON.stringify(response, null, 2), response);
@@ -638,7 +644,7 @@ async function runsCommand(
   io: CliIo,
   parsed: ParsedArgs
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const runs = (await client.listRuns(workspaceId)) as AgentRun[];
     output(io, parsed, runs.map(formatRun).join("\n") || "(no runs)", runs);
   });
@@ -653,7 +659,7 @@ async function archiveCommand(
   rest: string[]
 ): Promise<number> {
   if (subcommand === "add") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const localPath = required(rest[0], "memfs archive add requires a local text file.");
       const content = await readFile(localPath, "utf8");
       const archiveType = optionValue(rest, "--type") ?? "imported";
@@ -669,14 +675,14 @@ async function archiveCommand(
   }
 
   if (subcommand === "list") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const entries = (await client.listArchive(workspaceId)) as ArchiveEntry[];
       output(io, parsed, entries.map(formatArchiveEntry).join("\n") || "(no archive entries)", entries);
     });
   }
 
   if (subcommand === "show") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const archiveId = required(rest[0], "memfs archive show requires an archive id.");
       const response = (await client.readArchive(workspaceId, archiveId)) as ArchiveReadResponse;
       output(io, parsed, response.content, response);
@@ -684,7 +690,7 @@ async function archiveCommand(
   }
 
   if (subcommand === "extract") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const archiveId = required(rest[0], "memfs archive extract requires an archive id.");
       const response = (await client.extractArchive(workspaceId, archiveId, {
         actor: "human:cli"
@@ -694,7 +700,7 @@ async function archiveCommand(
   }
 
   if (subcommand === "search") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const query = required(rest.join(" ").trim(), "memfs archive search requires a query.");
       const response = (await client.searchArchive(workspaceId, query, {
         mode: "hybrid",
@@ -715,7 +721,7 @@ async function handoffCommand(
   parsed: ParsedArgs,
   args: string[]
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const response = await client.createHandoff(workspaceId, {
       actor: "human:cli",
       project_hint: optionValue(args, "--project"),
@@ -731,7 +737,7 @@ async function staleCommand(
   io: CliIo,
   parsed: ParsedArgs
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const stale = await client.listStaleMemory(workspaceId);
     output(io, parsed, JSON.stringify(stale, null, 2), stale);
   });
@@ -746,35 +752,35 @@ async function syncCommand(
   rest: string[]
 ): Promise<number> {
   if (subcommand === "status") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const status = (await client.syncStatus(workspaceId)) as SyncStatus;
       output(io, parsed, formatSyncStatus(status), status);
     });
   }
 
   if (subcommand === "pull") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const response = await client.syncPull(workspaceId, { actor: "human:cli" });
       output(io, parsed, JSON.stringify(response, null, 2), response);
     });
   }
 
   if (subcommand === "push") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const response = await client.syncPush(workspaceId, { actor: "human:cli" });
       output(io, parsed, JSON.stringify(response, null, 2), response);
     });
   }
 
   if (subcommand === "conflicts") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const conflicts = (await client.listSyncConflicts(workspaceId)) as ConflictRecord[];
       output(io, parsed, conflicts.map(formatConflict).join("\n") || "(no sync conflicts)", conflicts);
     });
   }
 
   if (subcommand === "resolve") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const conflictId = required(rest[0], "memfs sync resolve requires a conflict id.");
       const mode = (optionValue(parsed.args, "--mode") ?? "keep_both") as
         | "keep_local"
@@ -801,14 +807,14 @@ async function teamCommand(
   rest: string[]
 ): Promise<number> {
   if (subcommand === "members") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const members = (await client.listTeamMembers(workspaceId)) as TeamMember[];
       output(io, parsed, members.map(formatTeamMember).join("\n") || "(no team members)", members);
     });
   }
 
   if (subcommand === "invite") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const handle = required(rest[0], "memfs team invite requires a handle.");
       const role = (optionValue(parsed.args, "--role") ?? "viewer") as "owner" | "admin" | "editor" | "agent" | "viewer";
       const member = (await client.addTeamMember(workspaceId, {
@@ -821,7 +827,7 @@ async function teamCommand(
   }
 
   if (subcommand === "role" && rest[0] === "set") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const handle = required(rest[1], "memfs team role set requires a handle.");
       const role = required(rest[2], "memfs team role set requires a role.") as "owner" | "admin" | "editor" | "agent" | "viewer";
       const member = (await client.setTeamRole(workspaceId, {
@@ -843,7 +849,7 @@ async function promoteCommand(
   parsed: ParsedArgs,
   args: string[]
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const sourcePath = required(args[0], "memfs promote requires a source path.");
     const targetPath = required(optionValue(args, "--to"), "memfs promote requires --to <target_path>.");
     const promotion = (await client.promoteMemory(workspaceId, sourcePath, targetPath, {
@@ -862,7 +868,7 @@ async function promotionsCommand(
   io: CliIo,
   parsed: ParsedArgs
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const promotions = (await client.listPromotions(workspaceId)) as MemoryPromotion[];
     output(
       io,
@@ -880,7 +886,7 @@ async function candidatesCommand(
   parsed: ParsedArgs,
   args: string[]
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const candidates = (await client.listCandidates(workspaceId, candidateListOptions(args))) as MemoryCandidate[];
     output(io, parsed, candidates.map(formatCandidate).join("\n\n") || "(no candidates)", candidates);
   });
@@ -895,7 +901,7 @@ async function candidateCommand(
   rest: string[]
 ): Promise<number> {
   if (subcommand === "show") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const id = required(rest[0], "memfs candidate show requires a candidate id.");
       const candidate = (await client.readCandidate(workspaceId, id)) as MemoryCandidate;
       output(io, parsed, formatCandidate(candidate), candidate);
@@ -903,7 +909,7 @@ async function candidateCommand(
   }
 
   if (subcommand === "edit") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const id = required(rest[0], "memfs candidate edit requires a candidate id.");
       const body = candidateEditBody(rest.slice(1));
       if (Object.keys(body).length === 1 && body.actor) {
@@ -915,7 +921,7 @@ async function candidateCommand(
   }
 
   if (subcommand === "approve") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const id = required(rest[0], "memfs candidate approve requires a candidate id.");
       const candidate = (await client.approveCandidate(workspaceId, id, {
         reviewer: "human:cli",
@@ -928,7 +934,7 @@ async function candidateCommand(
   }
 
   if (subcommand === "reject") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const id = required(rest[0], "memfs candidate reject requires a candidate id.");
       const candidate = (await client.rejectCandidate(workspaceId, id, {
         reviewer: "human:cli",
@@ -939,7 +945,7 @@ async function candidateCommand(
   }
 
   if (subcommand === "resolve-conflict") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const id = required(rest[0], "memfs candidate resolve-conflict requires a candidate id.");
       const mode = required(optionValue(rest, "--mode"), "memfs candidate resolve-conflict requires --mode keep_new|keep_old|keep_both|mark_superseded.");
       if (!["keep_new", "keep_old", "keep_both", "mark_superseded"].includes(mode)) {
@@ -967,7 +973,7 @@ async function memoryCommand(
   rest: string[]
 ): Promise<number> {
   if (subcommand === "mark-stale") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const nodeId = required(rest[0], "memfs memory mark-stale requires a node id.");
       const reason = (optionValue(rest, "--reason") ?? rest.slice(1).join(" ").trim()) || "Marked stale.";
       const node = (await client.markMemoryStale(workspaceId, nodeId, {
@@ -979,7 +985,7 @@ async function memoryCommand(
   }
 
   if (subcommand === "confirm") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const nodeId = required(rest[0], "memfs memory confirm requires a node id.");
       const node = (await client.confirmMemory(workspaceId, nodeId, { actor: "human:cli" })) as MemoryNode;
       output(io, parsed, formatNode(node), node);
@@ -987,7 +993,7 @@ async function memoryCommand(
   }
 
   if (subcommand === "supersede") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const oldNodeId = required(rest[0], "memfs memory supersede requires an old node id.");
       const newNodeId = required(rest[1], "memfs memory supersede requires a new node id.");
       const link = await client.supersedeMemory(workspaceId, oldNodeId, newNodeId, {
@@ -1010,7 +1016,7 @@ async function graphCommand(
   rest: string[]
 ): Promise<number> {
   if (subcommand === "node") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const nodeId = required(rest[0], "memfs graph node requires a node id.");
       const response = (await client.getMemoryGraphNode(workspaceId, nodeId)) as MemoryGraphNodeResponse;
       output(io, parsed, formatGraphNode(response), response);
@@ -1018,7 +1024,7 @@ async function graphCommand(
   }
 
   if (subcommand === "related") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const nodeId = required(rest[0], "memfs graph related requires a node id.");
       const response = (await client.findRelatedMemories(workspaceId, nodeId, graphRelatedOptions(rest.slice(1)))) as RelatedMemoryResult[];
       output(io, parsed, response.map(formatRelatedMemory).join("\n\n") || "(no related memories)", response);
@@ -1026,15 +1032,15 @@ async function graphCommand(
   }
 
   if (subcommand === "link") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const fromId = required(rest[0], "memfs graph link requires a from id.");
-      const relationType = required(rest[1], "memfs graph link requires a relation type.");
+      const relationType = parseMemoryRelationType(required(rest[1], "memfs graph link requires a relation type."));
       const toId = required(rest[2], "memfs graph link requires a to id.");
       const confidence = optionValue(rest, "--confidence");
       const edge = (await client.createGraphEdge(workspaceId, {
-        from_type: optionValue(rest, "--from-type") ?? "memory_node",
+        from_type: parseGraphObjectType(optionValue(rest, "--from-type") ?? "memory_node"),
         from_id: fromId,
-        to_type: optionValue(rest, "--to-type") ?? "memory_node",
+        to_type: parseGraphObjectType(optionValue(rest, "--to-type") ?? "memory_node"),
         to_id: toId,
         relation_type: relationType,
         confidence: confidence ? Number(confidence) : undefined,
@@ -1047,7 +1053,7 @@ async function graphCommand(
   }
 
   if (subcommand === "unlink") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const edgeId = required(rest[0], "memfs graph unlink requires an edge id.");
       const response = (await client.deleteGraphEdge(workspaceId, edgeId, { actor: "human:cli" })) as DeleteGraphEdgeResponse;
       output(io, parsed, `Deleted graph edge ${response.edge.id}`, response);
@@ -1055,7 +1061,7 @@ async function graphCommand(
   }
 
   if (subcommand === "path") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const fromId = required(rest[0], "memfs graph path requires a from node id.");
       const toId = required(rest[1], "memfs graph path requires a to node id.");
       const maxDepth = optionValue(rest, "--max-depth");
@@ -1078,7 +1084,7 @@ async function approvalCommand(
   promotionId: string,
   approve: boolean
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const response = (approve
       ? await client.approvePromotion(workspaceId, promotionId, { reviewer: "human:cli", apply: true })
       : await client.rejectPromotion(workspaceId, promotionId, { reviewer: "human:cli" })) as MemoryPromotion;
@@ -1095,7 +1101,7 @@ async function snapshotCommand(
   rest: string[]
 ): Promise<number> {
   if (subcommand === "create") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const name = required(rest[0], "memfs snapshot create requires a name.");
       const snapshot = (await client.createSnapshot(workspaceId, name, { actor: "human:cli" })) as SnapshotRecord;
       output(io, parsed, formatSnapshot(snapshot), snapshot);
@@ -1103,14 +1109,14 @@ async function snapshotCommand(
   }
 
   if (subcommand === "list") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const snapshots = (await client.listSnapshots(workspaceId)) as SnapshotRecord[];
       output(io, parsed, snapshots.map(formatSnapshot).join("\n") || "(no snapshots)", snapshots);
     });
   }
 
   if (subcommand === "diff") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const snapshotId = required(rest[0], "memfs snapshot diff requires a snapshot id.");
       const diff = await client.diffSnapshot(workspaceId, snapshotId);
       output(io, parsed, JSON.stringify(diff, null, 2), diff);
@@ -1127,7 +1133,7 @@ async function rollbackCommand(
   parsed: ParsedArgs,
   snapshotId: string
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const response = await client.rollbackSnapshot(workspaceId, snapshotId, {
       dry_run: parsed.dryRun,
       actor: "human:cli"
@@ -1142,7 +1148,7 @@ async function healthCommand(
   io: CliIo,
   parsed: ParsedArgs
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const health = (await client.getMemoryHealth(workspaceId)) as MemoryHealth;
     output(io, parsed, formatHealth(health), health);
   });
@@ -1231,7 +1237,7 @@ async function writeCommand(
   rest: string[],
   append: boolean
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const filePath = required(rest[0], `memfs ${append ? "append" : "write"} requires a path.`);
     const content = rest.slice(1).join(" ");
     if (!content) {
@@ -1252,9 +1258,10 @@ async function writeCommand(
 
 async function readExistingContent(client: MemoryFSClient, workspaceId: string, filePath: string): Promise<string> {
   try {
-    const existing = (await client.readFile(workspaceId, filePath)) as FileReadResponse;
+    const existing = await client.readFile(workspaceId, filePath);
     return existing.content ? `${existing.content}\n` : "";
-  } catch {
+  } catch (error) {
+    if (!isMissingResourceError(error)) throw error;
     return "";
   }
 }
@@ -1266,7 +1273,7 @@ async function uploadCommand(
   parsed: ParsedArgs,
   args: string[]
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const localPath = required(args[0], "memfs upload requires a local file path.");
     const targetPath = optionValue(args, "--to") ?? `/uploads/${path.basename(localPath)}`;
     const bytes = await readFile(localPath);
@@ -1287,7 +1294,7 @@ async function extractCommand(
   parsed: ParsedArgs,
   filePath: string
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const response = (await client.extractFile(workspaceId, filePath, "human:cli")) as ExtractedSource;
     output(io, parsed, formatExtractedSource(response), response);
   });
@@ -1300,7 +1307,7 @@ async function extractedCommand(
   parsed: ParsedArgs,
   filePath: string
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const files = (await client.listFiles(workspaceId)) as FileRecord[];
     const file = files.find((entry) => entry.path === filePath);
     if (!file) {
@@ -1325,19 +1332,19 @@ async function memoryGrepCommand(
   commandName: "grep" | "search",
   defaultMode: "literal" | "semantic" | "hybrid"
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const grep = parseGrepArgs(args, defaultMode);
     const cleaned = required(grep.query.trim(), `memfs ${commandName} requires a query.`);
     const response = (await client.grepMemory(workspaceId, cleaned, {
       mode: grep.mode,
-      scope: grep.scope,
+      scope: parseMemoryScopes(grep.scope),
       project_slug: grep.project_slug,
       repo_path: grep.repo_path,
       session_id: grep.session_id,
       agent_id: grep.agent_id,
       contact_id: grep.contact_id,
 	      run_id: grep.run_id,
-	      trust_min: grep.trust_min,
+	      trust_min: parseMemoryTrustLevel(grep.trust_min),
 	      include_runs: grep.include_runs,
 	      include_sources: grep.include_sources,
 	      include_stale: grep.include_stale,
@@ -1355,13 +1362,13 @@ async function recallCommand(
   parsed: ParsedArgs,
   args: string[]
 ): Promise<number> {
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const scoped = parseScopedQueryArgs(args);
     const cleaned = required(scoped.query.trim(), "memfs recall requires a query.");
     const response = (await client.recallMemory(workspaceId, cleaned, {
       include_detail: true,
       include_raw: false,
-      scope: scoped.scope,
+      scope: parseMemoryScopes(scoped.scope),
       project_slug: scoped.project_slug,
       repo_path: scoped.repo_path,
       session_id: scoped.session_id,
@@ -1383,7 +1390,7 @@ async function nodeCommand(
   rest: string[]
 ): Promise<number> {
   if (subcommand === "list") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const sourceFilter = optionValue(parsed.args, "--source");
       const scopeFilter = optionValue(parsed.args, "--scope");
       const projectFilter = optionValue(parsed.args, "--project");
@@ -1404,7 +1411,7 @@ async function nodeCommand(
   }
 
   if (subcommand === "read") {
-    return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+    return withWorkspace(env, async (workspaceId) => {
       const node = (await client.readMemoryNode(
         workspaceId,
         required(rest[0], "memfs node read requires a node id.")
@@ -1427,7 +1434,7 @@ async function auditCommand(
     throw new Error("Usage: memfs audit list");
   }
 
-  return withWorkspace(client, env, io, parsed, async (workspaceId) => {
+  return withWorkspace(env, async (workspaceId) => {
     const events = (await client.listAuditEvents(workspaceId)) as AuditEvent[];
     output(
       io,
@@ -1439,10 +1446,7 @@ async function auditCommand(
 }
 
 async function withWorkspace(
-  client: MemoryFSClient,
   env: NodeJS.ProcessEnv,
-  io: CliIo,
-  parsed: ParsedArgs,
   handler: (workspaceId: string) => Promise<void>
 ): Promise<number> {
   const config = await readConfig(env);
@@ -1900,6 +1904,39 @@ function optionValue(args: string[], name: string): string | undefined {
   return index >= 0 ? args[index + 1] : undefined;
 }
 
+function parseMemoryScopes(values: string[] | undefined): MemoryScope[] | undefined {
+  return values ? parseStringUnion(values, memoryScopes, "scope") : undefined;
+}
+
+function parseMemoryTrustLevel(value: string | undefined): MemoryTrustLevel | undefined {
+  return parseStringUnion(value ? [value] : undefined, memoryTrustLevels, "trust_min")?.[0];
+}
+
+function parseGraphObjectType(value: string): MemoryGraphObjectType {
+  const parsed = parseStringUnion([value], memoryGraphObjectTypes, "graph object type");
+  return parsed[0];
+}
+
+function parseMemoryRelationType(value: string): MemoryRelationType {
+  const parsed = parseStringUnion([value], memoryRelationTypes, "relation type");
+  return parsed[0];
+}
+
+function parseStringUnion<const T extends readonly string[]>(
+  values: string[] | undefined,
+  allowed: T,
+  fieldName: string
+): Array<T[number]> {
+  if (!values) return [];
+  const allowedValues = new Set<string>(allowed);
+  return values.map((value) => {
+    if (!allowedValues.has(value)) {
+      throw new Error(`${fieldName} contains unsupported value: ${value}`);
+    }
+    return value as T[number];
+  });
+}
+
 function candidateListOptions(args: string[]): Record<string, unknown> {
   return compactObject({
     status: optionValue(args, "--status"),
@@ -2038,7 +2075,8 @@ function parseBriefArgs(args: string[]): {
 async function readConfig(env: NodeJS.ProcessEnv): Promise<CliConfig> {
   try {
     return JSON.parse(await readFile(configPath(env), "utf8")) as CliConfig;
-  } catch {
+  } catch (error) {
+    if (!isNodeError(error) || error.code !== "ENOENT") throw error;
     return {};
   }
 }
@@ -2069,6 +2107,14 @@ function required(value: string | undefined, message: string): string {
 
 function isString(value: string | undefined): value is string {
   return typeof value === "string";
+}
+
+function isMissingResourceError(error: unknown): boolean {
+  return error instanceof Error && /not found|no such|does not exist/i.test(error.message);
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 function inferMimeType(filePath: string): string {

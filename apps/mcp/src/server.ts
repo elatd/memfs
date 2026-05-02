@@ -1,5 +1,15 @@
 #!/usr/bin/env node
-import { MemoryFS, type MemoryGrepOptions, type RecallOptions } from "@memoryfs/core";
+import {
+  MemoryFS,
+  memoryScopes,
+  memoryTrustLevels,
+  memoryTypes,
+  recallModes,
+  type MemoryGrepOptions,
+  type MemoryTrustLevel,
+  type MemoryType,
+  type RecallOptions
+} from "@memoryfs/core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import dotenv from "dotenv";
@@ -95,8 +105,8 @@ export interface McpToolHandlers {
     include_rejected?: boolean;
     include_stale?: boolean;
     mode?: RecallOptions["mode"];
-    memory_types?: string[];
-    trust_levels?: string[];
+    memory_types?: MemoryType[];
+    trust_levels?: MemoryTrustLevel[];
     project_hint?: string;
     run_id?: string;
     scope?: RecallOptions["scope"];
@@ -366,8 +376,8 @@ export function createMemfsMcpToolHandlers(memoryfs: MemoryFS): McpToolHandlers 
         include_rejected,
         include_stale,
         mode,
-        memory_types,
-        trust_levels,
+        memory_types: parseMemoryTypes(memory_types),
+        trust_levels: parseMemoryTrustLevels(trust_levels),
         project_hint,
         run_id,
         scope,
@@ -582,9 +592,6 @@ export function createMemfsMcpServer(memoryfs: MemoryFS): McpServer {
   return server;
 }
 
-const memoryScopeValues = ["global", "workspace", "project", "repo", "session", "agent", "contact", "run"] as const;
-const trustLevelValues = ["ephemeral", "agent_generated", "source_backed", "reviewed", "trusted", "superseded", "rejected"] as const;
-
 function memfsGrepToolSchema() {
   return {
     workspace_id: z.string(),
@@ -597,7 +604,7 @@ function memfsGrepToolSchema() {
     agent_id: z.string().optional(),
     contact_id: z.string().optional(),
     run_id: z.string().optional(),
-    trust_min: z.enum(trustLevelValues).optional(),
+    trust_min: z.enum(memoryTrustLevels).optional(),
     include_runs: z.boolean().default(true),
     include_sources: z.boolean().default(true),
     include_stale: z.boolean().default(false),
@@ -611,24 +618,52 @@ function memfsMemorySearchToolSchema() {
     query: z.string(),
     limit: z.number().int().positive().default(20),
     project_hint: z.string().optional(),
-    scope: z.array(z.enum(memoryScopeValues)).optional(),
+    scope: z.array(z.enum(memoryScopes)).optional(),
     project_slug: z.string().optional(),
     repo_path: z.string().optional(),
     session_id: z.string().optional(),
     agent_id: z.string().optional(),
     contact_id: z.string().optional(),
     run_id: z.string().optional(),
-    trust_min: z.enum(trustLevelValues).optional(),
+    trust_min: z.enum(memoryTrustLevels).optional(),
     include_runs: z.boolean().default(true),
     include_sources: z.boolean().default(true),
     include_stale: z.boolean().default(false)
   };
 }
 
+function memfsMemoryRecallToolSchema() {
+  return {
+    workspace_id: z.string(),
+    query: z.string(),
+    limit: z.number().int().positive().default(8),
+    include_detail: z.boolean().default(true),
+    include_raw: z.boolean().default(false),
+    include_why: z.boolean().default(false),
+    include_contradictions: z.boolean().default(false),
+    include_links: z.boolean().default(false),
+    include_trust: z.boolean().default(false),
+    include_rejected: z.boolean().default(false),
+    include_stale: z.boolean().default(false),
+    mode: z.enum(recallModes).optional(),
+    memory_types: z.array(z.enum(memoryTypes)).optional(),
+    trust_levels: z.array(z.enum(memoryTrustLevels)).optional(),
+    project_hint: z.string().optional(),
+    run_id: z.string().optional(),
+    scope: z.array(z.enum(memoryScopes)).optional(),
+    project_slug: z.string().optional(),
+    repo_path: z.string().optional(),
+    session_id: z.string().optional(),
+    agent_id: z.string().optional(),
+    contact_id: z.string().optional()
+  };
+}
+
 export function createMemfsMcpToolSchemas() {
   return {
     memfs_grep: memfsGrepToolSchema(),
-    memfs_memory_search: memfsMemorySearchToolSchema()
+    memfs_memory_search: memfsMemorySearchToolSchema(),
+    memfs_memory_recall: memfsMemoryRecallToolSchema()
   };
 }
 
@@ -742,30 +777,7 @@ function registerTools(server: McpServer, handlers: McpToolHandlers): void {
   server.tool(
     "memfs_memory_recall",
     "Recall relevant MemFS memory nodes for context. Raw source is omitted by default; use memory_raw_source_read/memfs_memory_raw_read when raw source is explicitly needed.",
-    {
-      workspace_id: z.string(),
-      query: z.string(),
-      limit: z.number().int().positive().default(8),
-      include_detail: z.boolean().default(true),
-      include_raw: z.boolean().default(false),
-      include_why: z.boolean().default(false),
-      include_contradictions: z.boolean().default(false),
-      include_links: z.boolean().default(false),
-      include_trust: z.boolean().default(false),
-      include_rejected: z.boolean().default(false),
-      include_stale: z.boolean().default(false),
-      mode: z.enum(["general", "task_preparation", "fact_lookup", "debugging", "handoff", "research", "decision_review"]).optional(),
-      memory_types: z.array(z.string()).optional(),
-      trust_levels: z.array(z.string()).optional(),
-      project_hint: z.string().optional(),
-      run_id: z.string().optional(),
-      scope: z.array(z.enum(["global", "workspace", "project", "repo", "session", "agent", "contact", "run"])).optional(),
-      project_slug: z.string().optional(),
-      repo_path: z.string().optional(),
-      session_id: z.string().optional(),
-      agent_id: z.string().optional(),
-      contact_id: z.string().optional()
-    },
+    schemas.memfs_memory_recall,
     async (input) => textResult(await handlers.memfs_memory_recall(input))
   );
   server.tool(
@@ -1103,30 +1115,7 @@ function registerOpenClawAliases(server: McpServer, handlers: McpToolHandlers): 
   server.tool(
     "memory_recall",
     "Recall task-relevant context. Call this when a full brief is unnecessary; raw source is omitted by default.",
-    {
-      workspace_id: z.string(),
-      query: z.string(),
-      limit: z.number().int().positive().default(8),
-      include_detail: z.boolean().default(true),
-      include_raw: z.boolean().default(false),
-      include_why: z.boolean().default(false),
-      include_contradictions: z.boolean().default(false),
-      include_links: z.boolean().default(false),
-      include_trust: z.boolean().default(false),
-      include_rejected: z.boolean().default(false),
-      include_stale: z.boolean().default(false),
-      mode: z.enum(["general", "task_preparation", "fact_lookup", "debugging", "handoff", "research", "decision_review"]).optional(),
-      memory_types: z.array(z.string()).optional(),
-      trust_levels: z.array(z.string()).optional(),
-      project_hint: z.string().optional(),
-      run_id: z.string().optional(),
-      scope: z.array(z.enum(["global", "workspace", "project", "repo", "session", "agent", "contact", "run"])).optional(),
-      project_slug: z.string().optional(),
-      repo_path: z.string().optional(),
-      session_id: z.string().optional(),
-      agent_id: z.string().optional(),
-      contact_id: z.string().optional()
-    },
+    schemas.memfs_memory_recall,
     async (input) => textResult(await handlers.memfs_memory_recall(input))
   );
   server.tool(
@@ -1353,6 +1342,29 @@ function requireNonEmpty(value: string | undefined, name: string): string {
     throw new Error(`${name} is required.`);
   }
   return trimmed;
+}
+
+function parseMemoryTypes(values: string[] | undefined): MemoryType[] | undefined {
+  return parseStringUnion(values, memoryTypes, "memory_types");
+}
+
+function parseMemoryTrustLevels(values: string[] | undefined): MemoryTrustLevel[] | undefined {
+  return parseStringUnion(values, memoryTrustLevels, "trust_levels");
+}
+
+function parseStringUnion<const T extends readonly string[]>(
+  values: string[] | undefined,
+  allowed: T,
+  fieldName: string
+): Array<T[number]> | undefined {
+  if (!values) return undefined;
+  const allowedValues = new Set<string>(allowed);
+  return values.map((value) => {
+    if (!allowedValues.has(value)) {
+      throw new Error(`${fieldName} contains unsupported value: ${value}`);
+    }
+    return value as T[number];
+  });
 }
 
 function requireAbsolutePath(value: string | undefined): string {

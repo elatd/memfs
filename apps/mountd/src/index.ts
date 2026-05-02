@@ -10,7 +10,7 @@ import {
 } from "@memoryfs/mount-core";
 import { MemoryFSClient } from "@memoryfs/sdk";
 import { constants as fsConstants } from "node:fs";
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir, platform, userInfo } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -64,17 +64,52 @@ interface FuseConstants {
   EBADF: number;
 }
 
+export type FuseCallback<T = unknown> = (errorCode: number, arg?: T) => void;
+
+type FuseOperationResult = void | Promise<void>;
+
+export interface FuseOperations {
+  getattr(filePath: string, callback: FuseCallback<Record<string, unknown>>): FuseOperationResult;
+  readdir(dirPath: string, callback: FuseCallback<string[]>): FuseOperationResult;
+  open(filePath: string, flags: number, callback: FuseCallback<number>): FuseOperationResult;
+  create(filePath: string, mode: number, callback: FuseCallback<number>): FuseOperationResult;
+  read(
+    filePath: string,
+    fd: number,
+    buffer: Buffer,
+    length: number,
+    position: number,
+    callback: FuseCallback<number>
+  ): FuseOperationResult;
+  write(
+    filePath: string,
+    fd: number,
+    buffer: Buffer,
+    length: number,
+    position: number,
+    callback: FuseCallback<number>
+  ): FuseOperationResult;
+  flush(filePath: string, fd: number, callback: FuseCallback): FuseOperationResult;
+  fsync(filePath: string, fd: number, datasync: number, callback: FuseCallback): FuseOperationResult;
+  release(filePath: string, fd: number, callback: FuseCallback): FuseOperationResult;
+  unlink(filePath: string, callback: FuseCallback): FuseOperationResult;
+  mkdir(dirPath: string, mode: number, callback: FuseCallback): FuseOperationResult;
+  rmdir(dirPath: string, callback: FuseCallback): FuseOperationResult;
+  rename(from: string, to: string, callback: FuseCallback): FuseOperationResult;
+  truncate(filePath: string, size: number, callback: FuseCallback): FuseOperationResult;
+  ftruncate(filePath: string, fd: number, size: number, callback: FuseCallback): FuseOperationResult;
+  destroy(callback: FuseCallback): FuseOperationResult;
+}
+
 interface FuseInstance {
   mount(callback: (error?: Error | null) => void): void;
   unmount(callback: (error?: Error | null) => void): void;
 }
 
 interface FuseConstructor extends Partial<FuseConstants> {
-  new (mountpoint: string, operations: Record<string, unknown>, options?: Record<string, unknown>): FuseInstance;
+  new (mountpoint: string, operations: FuseOperations, options?: Record<string, unknown>): FuseInstance;
   isConfigured?: (callback: (error: Error | null, configured?: boolean) => void) => void;
 }
-
-type FuseCallback<T = unknown> = (errorCode: number, arg?: T) => void;
 
 export function parseMountdArgs(argv: string[], env: NodeJS.ProcessEnv = process.env): MountdConfig {
   const positional: string[] = [];
@@ -129,7 +164,7 @@ export function parseMountdArgs(argv: string[], env: NodeJS.ProcessEnv = process
   };
 }
 
-export function createFuseOperations(core: MountCore, options: { mode: MountMode; constants?: Partial<FuseConstants> }) {
+export function createFuseOperations(core: MountCore, options: { mode: MountMode; constants?: Partial<FuseConstants> }): FuseOperations {
   const constants = { ...fallbackFuseConstants, ...options.constants };
   let nextFd = 42;
   const handles = new Map<number, FileHandle>();

@@ -18,7 +18,7 @@ import type {
   SmokeCaseTrace
 } from "../reports/types.js";
 
-export interface SmokeSuiteOptions {
+interface SmokeSuiteOptions {
   benchmarkName: string;
   adapters: MemorySystemAdapter[];
   resultsJsonPath: string;

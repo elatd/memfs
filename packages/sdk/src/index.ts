@@ -1,3 +1,61 @@
+import type {
+  AgentRun,
+  AgentRunEvent,
+  ArchiveEntry,
+  ArchiveEntryType,
+  ArchiveExtractResponse,
+  ArchiveReadResponse,
+  AuditEvent,
+  BriefRequest,
+  BriefResponse,
+  CandidateConflictResolutionMode,
+  CompileRunResponse,
+  ConflictRecord,
+  ConflictResolutionMode,
+  ContradictionRecord,
+  ExtractedSource,
+  FileRecord,
+  HandoffSummary,
+  MemoryCandidate,
+  MemoryCandidateListOptions,
+  MemoryCandidateStatus,
+  MemoryGraphEdgePacket,
+  MemoryGraphNodeResponse,
+  MemoryGraphObjectType,
+  MemoryGrepMode,
+  MemoryGrepResponse,
+  MemoryHealthReport,
+  MemoryLink,
+  MemoryLinkPacket,
+  MemoryNode,
+  MemoryNodeSource,
+  MemoryPromotion,
+  MemoryRelationType,
+  MemoryScope,
+  MemoryTrustLevel,
+  MemoryType,
+  RecallMode,
+  RecallOptions,
+  RecallResponse,
+  ReasoningMemoryCandidate,
+  RelatedMemoryResult,
+  RelationshipPathResponse,
+  RollbackResult,
+  RunMemoryUsage,
+  Snapshot,
+  SnapshotDiff,
+  StaleMemoryCandidate,
+  SyncEvent,
+  SyncPullResult,
+  SyncPushResult,
+  SyncStatus,
+  TeamMember,
+  Workspace
+} from "@memoryfs/core";
+
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+export type JsonObject = { [key: string]: JsonValue };
+
 export interface ClientWriteOptions {
   actor?: string;
   ingest?: boolean;
@@ -19,7 +77,7 @@ export interface ClientRecallOptions {
   include_detail?: boolean;
   include_raw?: boolean;
   project_hint?: string;
-  scope?: string | string[];
+  scope?: RecallOptions["scope"];
   project_id?: string;
   project_slug?: string;
   repo_id?: string;
@@ -27,9 +85,9 @@ export interface ClientRecallOptions {
   session_id?: string;
   agent_id?: string;
   contact_id?: string;
-  mode?: string;
-  memory_types?: string[];
-  trust_levels?: string[];
+  mode?: RecallMode;
+  memory_types?: MemoryType[];
+  trust_levels?: MemoryTrustLevel[];
   include_why?: boolean;
   include_contradictions?: boolean;
   include_links?: boolean;
@@ -42,7 +100,7 @@ export interface ClientRecallOptions {
 }
 
 export interface ClientGrepOptions {
-  mode?: "literal" | "semantic" | "hybrid";
+  mode?: MemoryGrepMode;
   scope?: string | string[];
   project_id?: string;
   project_slug?: string;
@@ -52,7 +110,7 @@ export interface ClientGrepOptions {
   agent_id?: string;
   contact_id?: string;
   run_id?: string;
-  trust_min?: string;
+  trust_min?: MemoryTrustLevel;
   include_runs?: boolean;
   include_sources?: boolean;
   include_stale?: boolean;
@@ -61,10 +119,10 @@ export interface ClientGrepOptions {
 }
 
 export interface ClientArchiveImportOptions {
-  archive_type?: "conversation" | "transcript" | "imported" | "agent-run" | "raw";
+  archive_type?: ArchiveEntryType;
   title?: string;
   actor?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: JsonObject;
 }
 
 export interface ClientArchiveExtractOptions {
@@ -85,7 +143,7 @@ export interface ClientBriefOptions {
   run_id?: string;
   files?: string[];
   actor?: string;
-  mode?: string;
+  mode?: BriefRequest["mode"];
   include_recent_runs?: boolean;
   include_open_questions?: boolean;
   include_contradictions?: boolean;
@@ -97,7 +155,7 @@ export interface ClientBriefOptions {
 
 export interface ClientPromoteOptions {
   source_node_id?: string;
-  proposed_memory_type?: string;
+  proposed_memory_type?: MemoryType;
   reason?: string;
   actor?: string;
   require_review?: boolean;
@@ -105,10 +163,10 @@ export interface ClientPromoteOptions {
 }
 
 export interface ClientCandidateOptions {
-  status?: string | string[];
+  status?: MemoryCandidateListOptions["status"];
   duplicates?: boolean;
   conflicts?: boolean;
-  scope?: string | string[];
+  scope?: MemoryCandidateListOptions["scope"];
   project_id?: string;
   project_slug?: string;
   repo_id?: string;
@@ -125,8 +183,8 @@ export interface ClientCandidateCreateOptions extends ClientCandidateOptions {
   summary?: string;
   trigger?: string;
   detail?: string;
-  type?: string;
-  memory_type?: string;
+  type?: MemoryType;
+  memory_type?: MemoryType;
   source_path?: string;
   promotion_target_path?: string;
   target_path?: string;
@@ -141,11 +199,11 @@ export interface ClientCandidateUpdateOptions {
   summary?: string;
   trigger?: string;
   detail?: string;
-  type?: string;
-  memory_type?: string;
+  type?: MemoryType;
+  memory_type?: MemoryType;
   confidence?: number;
   tags?: string[];
-  status?: string;
+  status?: Exclude<MemoryCandidateStatus, "approved" | "rejected">;
   promotion_target_path?: string;
   target_path?: string;
   reason?: string;
@@ -154,7 +212,7 @@ export interface ClientCandidateUpdateOptions {
 }
 
 export interface ClientCandidateConflictResolutionOptions {
-  mode: "keep_new" | "keep_old" | "keep_both" | "mark_superseded";
+  mode: CandidateConflictResolutionMode;
   actor?: string;
   reviewer?: string;
   reason?: string;
@@ -177,37 +235,44 @@ export interface ClientGraphPathOptions {
 export interface ClientGraphLinkOptions {
   from_node_id?: string;
   to_node_id?: string;
-  from_type?: string;
+  from_type?: MemoryGraphObjectType;
   from_id?: string;
-  to_type?: string;
+  to_type?: MemoryGraphObjectType;
   to_id?: string;
-  relation_type: string;
+  relation_type: MemoryRelationType;
   confidence?: number;
   reason?: string;
   source_ref?: string | null;
   actor?: string;
 }
 
-export interface WorkspaceSummary {
-  id: string;
-  name: string;
-}
+export type WorkspaceSummary = Pick<Workspace, "id" | "name">;
 
 export interface FileReadPacket {
-  file: { id: string; path: string; [key: string]: unknown };
+  file: FileRecord;
   content: string;
 }
 
-export interface AgentRunPacket {
-  id: string;
-  workspace_id: string;
-  title: string;
-  task: string;
-  actor: string;
-  status: string;
-  run_path: string;
-  created_at: string;
-  completed_at: string | null;
+export type AgentRunPacket = AgentRun;
+
+export interface RawMemoryPacket {
+  node_id: string;
+  content: string;
+}
+
+export interface RunDetailPacket {
+  run: AgentRun;
+  events: AgentRunEvent[];
+  memory_used: RunMemoryUsage[];
+}
+
+export interface DeleteFilePacket {
+  ok: true;
+}
+
+export interface DeleteGraphEdgePacket {
+  deleted: boolean;
+  edge: MemoryGraphEdgePacket;
 }
 
 export interface MemFSClientOptions {
@@ -224,15 +289,15 @@ export interface WorkspaceInput {
 
 export interface RememberInput extends WorkspaceInput {
   text: string;
-  scope?: string | string[];
-  source?: "explicit_user_instruction" | "agent_observation" | "model_generated" | "imported" | string;
+  scope?: MemoryScope | MemoryScope[];
+  source?: "explicit_user_instruction" | "agent_observation" | "model_generated" | "imported";
   approved?: boolean;
   targetPath?: string;
   target_path?: string;
   sourcePath?: string;
   source_path?: string;
-  type?: string;
-  memory_type?: string;
+  type?: MemoryType;
+  memory_type?: MemoryType;
   confidence?: number;
   reason?: string;
   risk_flags?: string[];
@@ -250,7 +315,7 @@ export interface RememberInput extends WorkspaceInput {
 export interface RememberResult {
   workspace_id: string;
   status: "candidate" | "approved";
-  candidate: unknown;
+  candidate: MemoryCandidate;
 }
 
 export interface RecallInput extends WorkspaceInput, ClientRecallOptions {
@@ -293,7 +358,7 @@ export interface RunStartInput extends WorkspaceInput {
 
 export interface RunAppendInput {
   workspace?: string;
-  kind: "result" | "error" | "errors" | "followup" | "followups" | "action" | "actions" | "note" | string;
+  kind: "result" | "error" | "errors" | "followup" | "followups" | "action" | "actions" | "note";
   text: string;
   actor?: string;
 }
@@ -321,22 +386,22 @@ export interface BriefCreateInput extends WorkspaceInput, ClientBriefOptions {
 export class MemoryFSClient {
   constructor(private readonly baseUrl = "http://localhost:3131") {}
 
-  createWorkspace(name: string): Promise<unknown> {
+  createWorkspace(name: string): Promise<Workspace> {
     return this.request("/workspaces", {
       method: "POST",
       body: { name }
     });
   }
 
-  listWorkspaces(): Promise<unknown> {
+  listWorkspaces(): Promise<Workspace[]> {
     return this.request("/workspaces");
   }
 
-  listFiles(workspaceId: string): Promise<unknown> {
+  listFiles(workspaceId: string): Promise<FileRecord[]> {
     return this.request(`/workspaces/${workspaceId}/files`);
   }
 
-  readFile(workspaceId: string, path: string, options: { run_id?: string; actor?: string } = {}): Promise<unknown> {
+  readFile(workspaceId: string, path: string, options: { run_id?: string; actor?: string } = {}): Promise<FileReadPacket> {
     const params = new URLSearchParams({ path });
     if (options.run_id) params.set("run_id", options.run_id);
     if (options.actor) params.set("actor", options.actor);
@@ -348,7 +413,7 @@ export class MemoryFSClient {
     path: string,
     content: string,
     options: ClientWriteOptions = {}
-  ): Promise<unknown> {
+  ): Promise<FileRecord> {
     return this.request(`/workspaces/${workspaceId}/files/write`, {
       method: "POST",
       body: {
@@ -364,7 +429,7 @@ export class MemoryFSClient {
     path: string,
     contentBase64: string,
     options: ClientUploadOptions = {}
-  ): Promise<unknown> {
+  ): Promise<FileRecord> {
     return this.request(`/workspaces/${workspaceId}/files/upload`, {
       method: "POST",
       body: {
@@ -375,25 +440,25 @@ export class MemoryFSClient {
     });
   }
 
-  extractFile(workspaceId: string, path: string, actor = "agent:sdk"): Promise<unknown> {
+  extractFile(workspaceId: string, path: string, actor = "agent:sdk"): Promise<ExtractedSource> {
     return this.request(`/workspaces/${workspaceId}/files/extract`, {
       method: "POST",
       body: { path, actor }
     });
   }
 
-  ingestFile(workspaceId: string, path: string, actor = "agent:sdk"): Promise<unknown> {
+  ingestFile(workspaceId: string, path: string, actor = "agent:sdk"): Promise<MemoryNode[]> {
     return this.request(`/workspaces/${workspaceId}/memory/ingest-file`, {
       method: "POST",
       body: { path, actor }
     });
   }
 
-  readExtractedSources(workspaceId: string, fileId: string): Promise<unknown> {
+  readExtractedSources(workspaceId: string, fileId: string): Promise<ExtractedSource[]> {
     return this.request(`/workspaces/${workspaceId}/files/${fileId}/extracted`);
   }
 
-  deleteFile(workspaceId: string, path: string, options: ClientDeleteOptions = {}): Promise<unknown> {
+  deleteFile(workspaceId: string, path: string, options: ClientDeleteOptions = {}): Promise<DeleteFilePacket> {
     return this.request(`/workspaces/${workspaceId}/files/delete`, {
       method: "POST",
       body: {
@@ -403,7 +468,7 @@ export class MemoryFSClient {
     });
   }
 
-  searchMemory(workspaceId: string, query: string, options: ClientRecallOptions = {}): Promise<unknown> {
+  searchMemory(workspaceId: string, query: string, options: ClientRecallOptions = {}): Promise<RecallResponse> {
     return this.request(`/workspaces/${workspaceId}/memory/search`, {
       method: "POST",
       body: {
@@ -413,7 +478,7 @@ export class MemoryFSClient {
     });
   }
 
-  grepMemory(workspaceId: string, query: string, options: ClientGrepOptions = {}): Promise<unknown> {
+  grepMemory(workspaceId: string, query: string, options: ClientGrepOptions = {}): Promise<MemoryGrepResponse> {
     return this.request(`/workspaces/${workspaceId}/memory/grep`, {
       method: "POST",
       body: {
@@ -423,7 +488,7 @@ export class MemoryFSClient {
     });
   }
 
-  importArchiveText(workspaceId: string, content: string, options: ClientArchiveImportOptions = {}): Promise<unknown> {
+  importArchiveText(workspaceId: string, content: string, options: ClientArchiveImportOptions = {}): Promise<ArchiveEntry> {
     return this.request(`/workspaces/${workspaceId}/archive/import`, {
       method: "POST",
       body: {
@@ -433,22 +498,22 @@ export class MemoryFSClient {
     });
   }
 
-  listArchive(workspaceId: string): Promise<unknown> {
+  listArchive(workspaceId: string): Promise<ArchiveEntry[]> {
     return this.request(`/workspaces/${workspaceId}/archive`);
   }
 
-  readArchive(workspaceId: string, archiveId: string): Promise<unknown> {
+  readArchive(workspaceId: string, archiveId: string): Promise<ArchiveReadResponse> {
     return this.request(`/workspaces/${workspaceId}/archive/${archiveId}`);
   }
 
-  extractArchive(workspaceId: string, archiveId: string, options: ClientArchiveExtractOptions = {}): Promise<unknown> {
+  extractArchive(workspaceId: string, archiveId: string, options: ClientArchiveExtractOptions = {}): Promise<ArchiveExtractResponse> {
     return this.request(`/workspaces/${workspaceId}/archive/${archiveId}/extract`, {
       method: "POST",
       body: options
     });
   }
 
-  searchArchive(workspaceId: string, query: string, options: ClientGrepOptions = {}): Promise<unknown> {
+  searchArchive(workspaceId: string, query: string, options: ClientGrepOptions = {}): Promise<MemoryGrepResponse> {
     return this.request(`/workspaces/${workspaceId}/archive/search`, {
       method: "POST",
       body: {
@@ -458,7 +523,7 @@ export class MemoryFSClient {
     });
   }
 
-  recallMemory(workspaceId: string, query: string, options: ClientRecallOptions = {}): Promise<unknown> {
+  recallMemory(workspaceId: string, query: string, options: ClientRecallOptions = {}): Promise<RecallResponse> {
     return this.request(`/workspaces/${workspaceId}/memory/recall`, {
       method: "POST",
       body: {
@@ -468,19 +533,19 @@ export class MemoryFSClient {
     });
   }
 
-  readMemoryNode(workspaceId: string, nodeId: string): Promise<unknown> {
+  readMemoryNode(workspaceId: string, nodeId: string): Promise<MemoryNode> {
     return this.request(`/workspaces/${workspaceId}/memory/nodes/${nodeId}`);
   }
 
-  readMemoryNodeSource(workspaceId: string, nodeId: string): Promise<unknown> {
+  readMemoryNodeSource(workspaceId: string, nodeId: string): Promise<MemoryNodeSource> {
     return this.request(`/workspaces/${workspaceId}/memory/nodes/${nodeId}/source`);
   }
 
-  listMemoryNodes(workspaceId: string): Promise<unknown> {
+  listMemoryNodes(workspaceId: string): Promise<MemoryNode[]> {
     return this.request(`/workspaces/${workspaceId}/memory/nodes`);
   }
 
-  listMemoryNodeLinks(workspaceId: string, nodeId: string): Promise<unknown> {
+  listMemoryNodeLinks(workspaceId: string, nodeId: string): Promise<MemoryLinkPacket[]> {
     return this.request(`/workspaces/${workspaceId}/memory/nodes/${nodeId}/links`);
   }
 
@@ -489,19 +554,19 @@ export class MemoryFSClient {
     nodeId: string,
     body: {
       to_node_id: string;
-      relation_type: string;
+      relation_type: MemoryRelationType;
       confidence?: number;
       reason?: string;
       actor?: string;
     }
-  ): Promise<unknown> {
+  ): Promise<MemoryLink> {
     return this.request(`/workspaces/${workspaceId}/memory/nodes/${nodeId}/links`, {
       method: "POST",
       body
     });
   }
 
-  getMemoryGraphNode(workspaceId: string, nodeId: string): Promise<unknown> {
+  getMemoryGraphNode(workspaceId: string, nodeId: string): Promise<MemoryGraphNodeResponse> {
     return this.request(`/workspaces/${workspaceId}/memory/graph/nodes/${nodeId}`);
   }
 
@@ -509,7 +574,7 @@ export class MemoryFSClient {
     workspaceId: string,
     nodeId: string,
     options: ClientGraphRelatedOptions = {}
-  ): Promise<unknown> {
+  ): Promise<RelatedMemoryResult[]> {
     const params = new URLSearchParams();
     if (options.depth !== undefined) params.set("depth", String(options.depth));
     if (options.limit !== undefined) params.set("limit", String(options.limit));
@@ -524,7 +589,7 @@ export class MemoryFSClient {
     fromNodeId: string,
     toNodeId: string,
     options: ClientGraphPathOptions = {}
-  ): Promise<unknown> {
+  ): Promise<RelationshipPathResponse> {
     const params = new URLSearchParams({
       from_node_id: fromNodeId,
       to_node_id: toNodeId
@@ -534,25 +599,25 @@ export class MemoryFSClient {
     return this.request(`/workspaces/${workspaceId}/memory/graph/path?${params.toString()}`);
   }
 
-  createGraphEdge(workspaceId: string, body: ClientGraphLinkOptions): Promise<unknown> {
+  createGraphEdge(workspaceId: string, body: ClientGraphLinkOptions): Promise<MemoryGraphEdgePacket> {
     return this.request(`/workspaces/${workspaceId}/memory/graph/links`, {
       method: "POST",
       body
     });
   }
 
-  deleteGraphEdge(workspaceId: string, edgeId: string, body: { actor?: string } = {}): Promise<unknown> {
+  deleteGraphEdge(workspaceId: string, edgeId: string, body: { actor?: string } = {}): Promise<DeleteGraphEdgePacket> {
     return this.request(`/workspaces/${workspaceId}/memory/graph/links/${edgeId}`, {
       method: "DELETE",
       body
     });
   }
 
-  listContradictions(workspaceId: string): Promise<unknown> {
+  listContradictions(workspaceId: string): Promise<ContradictionRecord[]> {
     return this.request(`/workspaces/${workspaceId}/memory/contradictions`);
   }
 
-  explainRecall(workspaceId: string, query: string, options: ClientRecallOptions = {}): Promise<unknown> {
+  explainRecall(workspaceId: string, query: string, options: ClientRecallOptions = {}): Promise<RecallResponse> {
     return this.request(`/workspaces/${workspaceId}/memory/explain-recall`, {
       method: "POST",
       body: {
@@ -567,7 +632,7 @@ export class MemoryFSClient {
     sourcePath: string,
     targetPath: string,
     options: ClientPromoteOptions = {}
-  ): Promise<unknown> {
+  ): Promise<MemoryPromotion> {
     return this.request(`/workspaces/${workspaceId}/memory/promote`, {
       method: "POST",
       body: {
@@ -578,11 +643,11 @@ export class MemoryFSClient {
     });
   }
 
-  listPromotions(workspaceId: string): Promise<unknown> {
+  listPromotions(workspaceId: string): Promise<MemoryPromotion[]> {
     return this.request(`/workspaces/${workspaceId}/memory/promotions`);
   }
 
-  listCandidates(workspaceId: string, options: ClientCandidateOptions = {}): Promise<unknown> {
+  listCandidates(workspaceId: string, options: ClientCandidateOptions = {}): Promise<MemoryCandidate[]> {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(options)) {
       if (Array.isArray(value)) {
@@ -595,60 +660,60 @@ export class MemoryFSClient {
     return this.request(`/workspaces/${workspaceId}/memory/candidates${query ? `?${query}` : ""}`);
   }
 
-  createCandidate(workspaceId: string, body: ClientCandidateCreateOptions): Promise<unknown> {
+  createCandidate(workspaceId: string, body: ClientCandidateCreateOptions): Promise<MemoryCandidate> {
     return this.request(`/workspaces/${workspaceId}/memory/candidates`, {
       method: "POST",
       body
     });
   }
 
-  readCandidate(workspaceId: string, candidateId: string): Promise<unknown> {
+  readCandidate(workspaceId: string, candidateId: string): Promise<MemoryCandidate> {
     return this.request(`/workspaces/${workspaceId}/memory/candidates/${candidateId}`);
   }
 
-  updateCandidate(workspaceId: string, candidateId: string, body: ClientCandidateUpdateOptions): Promise<unknown> {
+  updateCandidate(workspaceId: string, candidateId: string, body: ClientCandidateUpdateOptions): Promise<MemoryCandidate> {
     return this.request(`/workspaces/${workspaceId}/memory/candidates/${candidateId}/update`, {
       method: "POST",
       body
     });
   }
 
-  approveCandidate(workspaceId: string, candidateId: string, body: { reviewer?: string; comment?: string; apply?: boolean; target_path?: string; promotion_target_path?: string } = {}): Promise<unknown> {
+  approveCandidate(workspaceId: string, candidateId: string, body: { reviewer?: string; comment?: string; apply?: boolean; target_path?: string; promotion_target_path?: string } = {}): Promise<MemoryCandidate> {
     return this.request(`/workspaces/${workspaceId}/memory/candidates/${candidateId}/approve`, {
       method: "POST",
       body
     });
   }
 
-  rejectCandidate(workspaceId: string, candidateId: string, body: { reviewer?: string; comment?: string } = {}): Promise<unknown> {
+  rejectCandidate(workspaceId: string, candidateId: string, body: { reviewer?: string; comment?: string } = {}): Promise<MemoryCandidate> {
     return this.request(`/workspaces/${workspaceId}/memory/candidates/${candidateId}/reject`, {
       method: "POST",
       body
     });
   }
 
-  resolveCandidateConflict(workspaceId: string, candidateId: string, body: ClientCandidateConflictResolutionOptions): Promise<unknown> {
+  resolveCandidateConflict(workspaceId: string, candidateId: string, body: ClientCandidateConflictResolutionOptions): Promise<MemoryCandidate> {
     return this.request(`/workspaces/${workspaceId}/memory/candidates/${candidateId}/resolve-conflict`, {
       method: "POST",
       body
     });
   }
 
-  approvePromotion(workspaceId: string, promotionId: string, body: { reviewer?: string; comment?: string; apply?: boolean } = {}): Promise<unknown> {
+  approvePromotion(workspaceId: string, promotionId: string, body: { reviewer?: string; comment?: string; apply?: boolean } = {}): Promise<MemoryPromotion> {
     return this.request(`/workspaces/${workspaceId}/memory/promotions/${promotionId}/approve`, {
       method: "POST",
       body
     });
   }
 
-  rejectPromotion(workspaceId: string, promotionId: string, body: { reviewer?: string; comment?: string } = {}): Promise<unknown> {
+  rejectPromotion(workspaceId: string, promotionId: string, body: { reviewer?: string; comment?: string } = {}): Promise<MemoryPromotion> {
     return this.request(`/workspaces/${workspaceId}/memory/promotions/${promotionId}/reject`, {
       method: "POST",
       body
     });
   }
 
-  createSnapshot(workspaceId: string, name: string, body: { description?: string; actor?: string } = {}): Promise<unknown> {
+  createSnapshot(workspaceId: string, name: string, body: { description?: string; actor?: string } = {}): Promise<Snapshot> {
     return this.request(`/workspaces/${workspaceId}/snapshots`, {
       method: "POST",
       body: {
@@ -658,32 +723,32 @@ export class MemoryFSClient {
     });
   }
 
-  listSnapshots(workspaceId: string): Promise<unknown> {
+  listSnapshots(workspaceId: string): Promise<Snapshot[]> {
     return this.request(`/workspaces/${workspaceId}/snapshots`);
   }
 
-  diffSnapshot(workspaceId: string, snapshotId: string): Promise<unknown> {
+  diffSnapshot(workspaceId: string, snapshotId: string): Promise<SnapshotDiff> {
     return this.request(`/workspaces/${workspaceId}/snapshots/${snapshotId}/diff`);
   }
 
-  rollbackSnapshot(workspaceId: string, snapshotId: string, body: { dry_run?: boolean; actor?: string } = {}): Promise<unknown> {
+  rollbackSnapshot(workspaceId: string, snapshotId: string, body: { dry_run?: boolean; actor?: string } = {}): Promise<RollbackResult> {
     return this.request(`/workspaces/${workspaceId}/snapshots/${snapshotId}/rollback`, {
       method: "POST",
       body
     });
   }
 
-  getMemoryHealth(workspaceId: string): Promise<unknown> {
+  getMemoryHealth(workspaceId: string): Promise<MemoryHealthReport> {
     return this.request(`/workspaces/${workspaceId}/memory/health`);
   }
 
-  recomputeMemoryHealth(workspaceId: string): Promise<unknown> {
+  recomputeMemoryHealth(workspaceId: string): Promise<MemoryHealthReport> {
     return this.request(`/workspaces/${workspaceId}/memory/health/recompute`, {
       method: "POST"
     });
   }
 
-  readRaw(workspaceId: string, nodeId: string, options: { run_id?: string; actor?: string } = {}): Promise<unknown> {
+  readRaw(workspaceId: string, nodeId: string, options: { run_id?: string; actor?: string } = {}): Promise<RawMemoryPacket> {
     const params = new URLSearchParams();
     if (options.run_id) params.set("run_id", options.run_id);
     if (options.actor) params.set("actor", options.actor);
@@ -691,7 +756,7 @@ export class MemoryFSClient {
     return this.request(`/workspaces/${workspaceId}/memory/nodes/${nodeId}/raw${suffix}`);
   }
 
-  createBrief(workspaceId: string, task: string, options: ClientBriefOptions = {}): Promise<unknown> {
+  createBrief(workspaceId: string, task: string, options: ClientBriefOptions = {}): Promise<BriefResponse> {
     return this.request(`/workspaces/${workspaceId}/brief`, {
       method: "POST",
       body: {
@@ -701,7 +766,7 @@ export class MemoryFSClient {
     });
   }
 
-  createRun(workspaceId: string, task: string, body: { title?: string; actor?: string } = {}): Promise<unknown> {
+  createRun(workspaceId: string, task: string, body: { title?: string; actor?: string } = {}): Promise<AgentRun> {
     return this.request(`/workspaces/${workspaceId}/runs`, {
       method: "POST",
       body: {
@@ -711,18 +776,18 @@ export class MemoryFSClient {
     });
   }
 
-  startRun(workspaceId: string, runId: string, body: { actor?: string } = {}): Promise<unknown> {
+  startRun(workspaceId: string, runId: string, body: { actor?: string } = {}): Promise<AgentRun> {
     return this.request(`/workspaces/${workspaceId}/runs/${runId}/start`, {
       method: "POST",
       body
     });
   }
 
-  listRuns(workspaceId: string): Promise<unknown> {
+  listRuns(workspaceId: string): Promise<AgentRun[]> {
     return this.request(`/workspaces/${workspaceId}/runs`);
   }
 
-  readRun(workspaceId: string, runId: string): Promise<unknown> {
+  readRun(workspaceId: string, runId: string): Promise<RunDetailPacket> {
     return this.request(`/workspaces/${workspaceId}/runs/${runId}`);
   }
 
@@ -730,7 +795,7 @@ export class MemoryFSClient {
     workspaceId: string,
     runId: string,
     body: { result?: string; errors?: string; followups?: string; actor?: string; failed?: boolean } = {}
-  ): Promise<unknown> {
+  ): Promise<AgentRun> {
     return this.request(`/workspaces/${workspaceId}/runs/${runId}/complete`, {
       method: "POST",
       body
@@ -741,108 +806,108 @@ export class MemoryFSClient {
     workspaceId: string,
     runId: string,
     body: { actor?: string; create_promotions?: boolean; reasoning?: boolean } = {}
-  ): Promise<unknown> {
+  ): Promise<CompileRunResponse> {
     return this.request(`/workspaces/${workspaceId}/runs/${runId}/compile`, {
       method: "POST",
       body
     });
   }
 
-  listRunLessons(workspaceId: string, runId: string): Promise<unknown> {
+  listRunLessons(workspaceId: string, runId: string): Promise<ReasoningMemoryCandidate[]> {
     return this.request(`/workspaces/${workspaceId}/runs/${runId}/lessons`);
   }
 
-  logRunEvent(workspaceId: string, runId: string, body: { event_type?: string; payload?: unknown } = {}): Promise<unknown> {
+  logRunEvent(workspaceId: string, runId: string, body: { event_type?: string; payload?: JsonValue } = {}): Promise<AgentRunEvent> {
     return this.request(`/workspaces/${workspaceId}/runs/${runId}/events`, {
       method: "POST",
       body
     });
   }
 
-  createHandoff(workspaceId: string, body: { run_id?: string; project_hint?: string; actor?: string } = {}): Promise<unknown> {
+  createHandoff(workspaceId: string, body: { run_id?: string; project_hint?: string; actor?: string } = {}): Promise<HandoffSummary> {
     return this.request(`/workspaces/${workspaceId}/handoff`, {
       method: "POST",
       body
     });
   }
 
-  listStaleMemory(workspaceId: string): Promise<unknown> {
+  listStaleMemory(workspaceId: string): Promise<StaleMemoryCandidate[]> {
     return this.request(`/workspaces/${workspaceId}/memory/stale`);
   }
 
-  markMemoryStale(workspaceId: string, nodeId: string, body: { reason?: string; actor?: string } = {}): Promise<unknown> {
+  markMemoryStale(workspaceId: string, nodeId: string, body: { reason?: string; actor?: string } = {}): Promise<MemoryNode> {
     return this.request(`/workspaces/${workspaceId}/memory/nodes/${nodeId}/mark-stale`, {
       method: "POST",
       body
     });
   }
 
-  confirmMemory(workspaceId: string, nodeId: string, body: { actor?: string } = {}): Promise<unknown> {
+  confirmMemory(workspaceId: string, nodeId: string, body: { actor?: string } = {}): Promise<MemoryNode> {
     return this.request(`/workspaces/${workspaceId}/memory/nodes/${nodeId}/confirm`, {
       method: "POST",
       body
     });
   }
 
-  supersedeMemory(workspaceId: string, oldNodeId: string, newNodeId: string, body: { reason?: string; actor?: string } = {}): Promise<unknown> {
+  supersedeMemory(workspaceId: string, oldNodeId: string, newNodeId: string, body: { reason?: string; actor?: string } = {}): Promise<MemoryLink> {
     return this.request(`/workspaces/${workspaceId}/memory/nodes/${oldNodeId}/supersede/${newNodeId}`, {
       method: "POST",
       body
     });
   }
 
-  listAuditEvents(workspaceId: string, limit = 100): Promise<unknown> {
+  listAuditEvents(workspaceId: string, limit = 100): Promise<AuditEvent[]> {
     return this.request(`/workspaces/${workspaceId}/audit-events?limit=${limit}`);
   }
 
-  recordAuditEvent(workspaceId: string, body: { actor?: string; event_type: string; payload?: unknown }): Promise<unknown> {
+  recordAuditEvent(workspaceId: string, body: { actor?: string; event_type: string; payload?: JsonValue }): Promise<AuditEvent> {
     return this.request(`/workspaces/${workspaceId}/audit-events`, {
       method: "POST",
       body
     });
   }
 
-  syncStatus(workspaceId: string): Promise<unknown> {
+  syncStatus(workspaceId: string): Promise<SyncStatus> {
     return this.request(`/workspaces/${workspaceId}/sync/status`);
   }
 
-  syncPull(workspaceId: string, body: { actor?: string; events?: unknown[] } = {}): Promise<unknown> {
+  syncPull(workspaceId: string, body: { actor?: string; events?: SyncEvent[] } = {}): Promise<SyncPullResult> {
     return this.request(`/workspaces/${workspaceId}/sync/pull`, {
       method: "POST",
       body
     });
   }
 
-  syncPush(workspaceId: string, body: { actor?: string } = {}): Promise<unknown> {
+  syncPush(workspaceId: string, body: { actor?: string } = {}): Promise<SyncPushResult> {
     return this.request(`/workspaces/${workspaceId}/sync/push`, {
       method: "POST",
       body
     });
   }
 
-  listSyncConflicts(workspaceId: string): Promise<unknown> {
+  listSyncConflicts(workspaceId: string): Promise<ConflictRecord[]> {
     return this.request(`/workspaces/${workspaceId}/sync/conflicts`);
   }
 
   resolveSyncConflict(
     workspaceId: string,
     conflictId: string,
-    body: { mode: "keep_local" | "keep_remote" | "manual_merge" | "keep_both"; actor?: string; manual_content?: string }
-  ): Promise<unknown> {
+    body: { mode: ConflictResolutionMode; actor?: string; manual_content?: string }
+  ): Promise<ConflictRecord> {
     return this.request(`/workspaces/${workspaceId}/sync/conflicts/${conflictId}/resolve`, {
       method: "POST",
       body
     });
   }
 
-  listTeamMembers(workspaceId: string): Promise<unknown> {
+  listTeamMembers(workspaceId: string): Promise<TeamMember[]> {
     return this.request(`/workspaces/${workspaceId}/team/members`);
   }
 
   addTeamMember(
     workspaceId: string,
     body: { handle: string; role: "owner" | "admin" | "editor" | "agent" | "viewer"; display_name?: string; actor?: string }
-  ): Promise<unknown> {
+  ): Promise<TeamMember> {
     return this.request(`/workspaces/${workspaceId}/team/members`, {
       method: "POST",
       body
@@ -852,14 +917,14 @@ export class MemoryFSClient {
   setTeamRole(
     workspaceId: string,
     body: { handle: string; role: "owner" | "admin" | "editor" | "agent" | "viewer"; actor?: string }
-  ): Promise<unknown> {
+  ): Promise<TeamMember> {
     return this.request(`/workspaces/${workspaceId}/team/role`, {
       method: "POST",
       body
     });
   }
 
-  private async request(path: string, init: { method?: string; body?: unknown } = {}): Promise<unknown> {
+  private async request<T>(path: string, init: { method?: string; body?: object } = {}): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: init.method ?? "GET",
       headers: init.body ? { "content-type": "application/json" } : undefined,
@@ -871,7 +936,7 @@ export class MemoryFSClient {
       throw new Error(errorBody?.error ?? `MemoryFS request failed with ${response.status}.`);
     }
 
-    return response.json();
+    return response.json() as Promise<T>;
   }
 }
 
@@ -887,11 +952,11 @@ export class MemFSClient extends MemoryFSClient {
   private readonly runPathById = new Map<string, string>();
 
   readonly candidates = {
-    list: async (input: CandidateListInput): Promise<unknown> => {
+    list: async (input: CandidateListInput): Promise<MemoryCandidate[]> => {
       const workspaceId = await this.resolveWorkspaceId(input);
       return this.listCandidates(workspaceId, stripWorkspace(input));
     },
-    approve: async (input: CandidateReviewInput): Promise<unknown> => {
+    approve: async (input: CandidateReviewInput): Promise<MemoryCandidate> => {
       const workspaceId = await this.resolveWorkspaceId(input, false);
       return this.approveCandidate(workspaceId, input.id, {
         reviewer: input.reviewer ?? input.actor ?? this.defaultActor,
@@ -899,7 +964,7 @@ export class MemFSClient extends MemoryFSClient {
         target_path: input.target_path ?? input.targetPath
       });
     },
-    reject: async (input: CandidateReviewInput): Promise<unknown> => {
+    reject: async (input: CandidateReviewInput): Promise<MemoryCandidate> => {
       const workspaceId = await this.resolveWorkspaceId(input, false);
       return this.rejectCandidate(workspaceId, input.id, {
         reviewer: input.reviewer ?? input.actor ?? this.defaultActor,
@@ -911,22 +976,22 @@ export class MemFSClient extends MemoryFSClient {
   readonly runs = {
     start: async (input: RunStartInput): Promise<AgentRunPacket> => {
       const workspaceId = await this.resolveWorkspaceId(input);
-      const created = (await this.createRun(workspaceId, input.task, {
+      const created = await this.createRun(workspaceId, input.task, {
         title: input.title,
         actor: input.actor ?? this.defaultActor
-      })) as AgentRunPacket;
-      const started = (await this.startRun(workspaceId, created.id, {
+      });
+      const started = await this.startRun(workspaceId, created.id, {
         actor: input.actor ?? this.defaultActor
-      })) as AgentRunPacket;
+      });
       this.rememberRunWorkspace(started, workspaceId);
       return started;
     },
-    append: async (runId: string, input: RunAppendInput): Promise<unknown> => {
+    append: async (runId: string, input: RunAppendInput): Promise<FileRecord> => {
       const workspaceId = await this.resolveRunWorkspace(runId, input.workspace);
       const runPath = await this.resolveRunPath(workspaceId, runId);
       const artifact = runArtifactForKind(input.kind);
       const filePath = `${runPath}/${artifact}`;
-      const existing = await this.readFile(workspaceId, filePath).catch(() => null) as FileReadPacket | null;
+      const existing = await this.readFileIfPresent(workspaceId, filePath);
       const nextContent = existing?.content ? `${existing.content.trimEnd()}\n${input.text}` : input.text;
       const written = await this.writeFile(workspaceId, filePath, nextContent, {
         actor: input.actor ?? this.defaultActor,
@@ -944,7 +1009,7 @@ export class MemFSClient extends MemoryFSClient {
       });
       return written;
     },
-    finish: async (runId: string, input: RunFinishInput = {}): Promise<unknown> => {
+    finish: async (runId: string, input: RunFinishInput = {}): Promise<AgentRun> => {
       const workspaceId = await this.resolveRunWorkspace(runId, input.workspace);
       return this.completeRun(workspaceId, runId, {
         result: input.result,
@@ -954,7 +1019,7 @@ export class MemFSClient extends MemoryFSClient {
         failed: input.failed
       });
     },
-    compile: async (runId: string, input: RunCompileInput = {}): Promise<unknown> => {
+    compile: async (runId: string, input: RunCompileInput = {}): Promise<CompileRunResponse> => {
       const workspaceId = await this.resolveRunWorkspace(runId, input.workspace);
       return this.compileRun(workspaceId, runId, {
         actor: input.actor ?? this.defaultActor,
@@ -965,7 +1030,7 @@ export class MemFSClient extends MemoryFSClient {
   };
 
   readonly briefs = {
-    create: async (input: BriefCreateInput): Promise<unknown> => {
+    create: async (input: BriefCreateInput): Promise<BriefResponse> => {
       const workspaceId = await this.resolveWorkspaceId(input);
       return this.createBrief(workspaceId, input.task, stripWorkspaceAndTask(input));
     }
@@ -1007,7 +1072,7 @@ export class MemFSClient extends MemoryFSClient {
       agent_id: input.agent_id,
       contact_id: input.contact_id,
       run_id: input.run_id
-    }) as { id?: string; node_id?: string };
+    });
 
     if (!input.approved) {
       return {
@@ -1034,22 +1099,22 @@ export class MemFSClient extends MemoryFSClient {
     };
   }
 
-  async recall(input: RecallInput): Promise<unknown> {
+  async recall(input: RecallInput): Promise<RecallResponse> {
     const workspaceId = await this.resolveWorkspaceId(input);
     return this.recallMemory(workspaceId, input.query, stripWorkspaceAndQuery(input));
   }
 
-  async search(input: RecallInput): Promise<unknown> {
+  async search(input: RecallInput): Promise<RecallResponse> {
     const workspaceId = await this.resolveWorkspaceId(input);
     return this.searchMemory(workspaceId, input.query, stripWorkspaceAndQuery(input));
   }
 
-  async grep(input: GrepInput): Promise<unknown> {
+  async grep(input: GrepInput): Promise<MemoryGrepResponse> {
     const workspaceId = await this.resolveWorkspaceId(input);
     return this.grepMemory(workspaceId, input.query, stripWorkspaceAndQuery(input));
   }
 
-  async write(input: WriteInput): Promise<unknown> {
+  async write(input: WriteInput): Promise<FileRecord> {
     const workspaceId = await this.resolveWorkspaceId(input);
     const content = input.content ?? input.text ?? "";
     return this.writeFile(workspaceId, input.path, content, {
@@ -1060,7 +1125,7 @@ export class MemFSClient extends MemoryFSClient {
     });
   }
 
-  async read(input: ReadInput): Promise<unknown> {
+  async read(input: ReadInput): Promise<FileReadPacket> {
     const workspaceId = await this.resolveWorkspaceId(input);
     return this.readFile(workspaceId, input.path, {
       actor: input.actor ?? this.defaultActor,
@@ -1073,7 +1138,7 @@ export class MemFSClient extends MemoryFSClient {
     const cached = this.workspaceCache.get(selector);
     if (cached) return cached;
 
-    const workspaces = (await this.listWorkspaces()) as WorkspaceSummary[];
+    const workspaces = await this.listWorkspaces();
     const existing = workspaces.find((workspace) => workspace.id === selector || workspace.name === selector);
     if (existing) {
       this.cacheWorkspace(existing);
@@ -1081,7 +1146,7 @@ export class MemFSClient extends MemoryFSClient {
     }
 
     if (input.createWorkspace ?? defaultCreate) {
-      const created = (await this.createWorkspace(selector)) as WorkspaceSummary;
+      const created = await this.createWorkspace(selector);
       this.cacheWorkspace(created);
       return created.id;
     }
@@ -1101,9 +1166,18 @@ export class MemFSClient extends MemoryFSClient {
   private async resolveRunPath(workspaceId: string, runId: string): Promise<string> {
     const cached = this.runPathById.get(runId);
     if (cached) return cached;
-    const response = (await this.readRun(workspaceId, runId)) as { run: AgentRunPacket };
+    const response = await this.readRun(workspaceId, runId);
     this.rememberRunWorkspace(response.run, workspaceId);
     return response.run.run_path;
+  }
+
+  private async readFileIfPresent(workspaceId: string, filePath: string): Promise<FileReadPacket | null> {
+    try {
+      return await this.readFile(workspaceId, filePath);
+    } catch (error) {
+      if (isMissingResourceError(error)) return null;
+      throw error;
+    }
   }
 
   private cacheWorkspace(workspace: WorkspaceSummary): void {
@@ -1138,7 +1212,7 @@ function stripWorkspaceAndTask(input: BriefCreateInput): ClientBriefOptions {
   return rest;
 }
 
-function inferMemoryType(text: string): string {
+function inferMemoryType(text: string): MemoryType {
   if (/^\s*preference:/i.test(text) || /\b(prefers?|likes|wants)\b/i.test(text)) return "preference";
   if (/^\s*constraint:/i.test(text) || /\b(must|never|cannot|should not)\b/i.test(text)) return "constraint";
   if (/^\s*decision:/i.test(text) || /\b(decided|decision)\b/i.test(text)) return "decision";
@@ -1147,8 +1221,8 @@ function inferMemoryType(text: string): string {
 
 function defaultRememberTargetPath(input: {
   text: string;
-  scope?: string | string[];
-  memory_type?: string;
+  scope?: MemoryScope | MemoryScope[];
+  memory_type?: MemoryType;
   project_slug?: string;
   project_id?: string;
 }): string {
@@ -1182,4 +1256,8 @@ function runArtifactForKind(kind: string): string {
     default:
       return `${kind.replace(/[^a-z0-9-_]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "note"}.md`;
   }
+}
+
+function isMissingResourceError(error: unknown): boolean {
+  return error instanceof Error && /not found|no such|does not exist/i.test(error.message);
 }
