@@ -33,7 +33,7 @@ Longer version:
 2. Before project work, call `brief_create` with the task, project, repo, or likely files.
 3. Create a run with `run_create` or use the run returned by a brief.
 4. During work, use `run_append` or `file_append` under `/runs/<run_id>/...` for notes, results, errors, followups, and actions.
-5. Use `memfs_grep`, `memory_search`, and `memory_recall` for source-backed context. Prefer snippets, `source_path`, and `raw_ref`; call `memory_raw_source_read` only when raw source is explicitly needed.
+5. Use `memfs_grep` when you know the exact words, `memory_search` when you know the idea, and `memory_recall` when you need task context. Prefer snippets, `source_path`, and `raw_ref`; call `memory_raw_source_read` only when raw source is explicitly needed.
 6. Use `candidate_create` or `promotion_request` to propose durable memory. Normal agents should not approve protected durable memory.
 7. After work, call `run_complete`, then `run_compile` with `reasoning=true` when reusable lessons may exist.
 8. Use `handoff_create` when another agent or human needs to continue.

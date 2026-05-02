@@ -55,18 +55,23 @@ describe("memfs CLI", () => {
     expect(cat.stdout).toContain("CLI should be easy for agents");
   });
 
-  it("greps memory", async () => {
+  it("greps exact text and searches by meaning", async () => {
     await run("workspace", "create", "demo");
     await run("use", "demo");
     await run("write", "/scratch/hosting.md", "Preference: The user prefers Netlify for hosting.");
 
-    const grep = await run("grep", "hosting preference");
+    const grep = await run("grep", "Netlify");
     expect(grep.code).toBe(0);
     expect(grep.stdout).toContain("/scratch/hosting.md");
     expect(grep.stdout.toLowerCase()).toContain("netlify");
+
+    const search = await run("search", "hosting preference");
+    expect(search.code).toBe(0);
+    expect(search.stdout).toContain("/scratch/hosting.md");
+    expect(search.stdout.toLowerCase()).toContain("netlify");
   });
 
-  it("returns structured JSON for hybrid grep", async () => {
+  it("returns structured JSON for exact grep", async () => {
     await run("workspace", "create", "demo");
     await run("use", "demo");
     await run("write", "/scratch/auth.md", "Decision: OAuth refresh tokens are stored server-side for the CLI test.");
@@ -90,7 +95,7 @@ describe("memfs CLI", () => {
     };
 
     expect(parsed.query).toBe("OAuth refresh tokens");
-    expect(parsed.mode).toBe("hybrid");
+    expect(parsed.mode).toBe("literal");
     expect(parsed.workspace_id).toBeTruthy();
     expect(parsed.results[0]).toMatchObject({
       path: "/scratch/auth.md",

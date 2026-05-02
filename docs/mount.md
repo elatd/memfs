@@ -153,7 +153,7 @@ Virtual files:
 
 `status.json` includes the workspace id/name, mount mode, actor, `ingestOnWrite`, `allowProtectedWrite`, `mountedAt`, API URL, and the most recent recall/search/brief query times for this mount session.
 
-Writing `search.query` runs hybrid memory grep and updates `search.results.md` for this mount session only.
+Writing `search.query` runs meaning-oriented hybrid search and updates `search.results.md` for this mount session only.
 
 ```bash
 echo "OAuth refresh tokens" > ~/MemFS/demo/.memfs/search.query

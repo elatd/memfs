@@ -882,7 +882,7 @@ Files:
 
 - recall.query: write a query to run memory recall for this mount session.
 - recall.results.md: read markdown recall results with source_path and raw_ref.
-- search.query: write a query to run hybrid memory grep for this mount session.
+- search.query: write a query to run meaning-oriented hybrid search for this mount session.
 - search.results.md: read markdown search results with source_path and raw_ref.
 - brief.query: write a task to generate a pre-task memory brief for this mount session.
 - brief.results.md: read a compact brief with source paths, trust, scores, node ids, and raw refs.

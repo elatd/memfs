@@ -29,7 +29,7 @@ This audit covers the current `elatd/memfs` monorepo surfaces:
 
 | Feature | Status | Short read |
 | --- | --- | --- |
-| Hybrid memory grep | Partial | CLI and virtual bash combine literal file matching with memory search; API/MCP search is semantic recall-style only. |
+| Retrieval command split | Existing | `grep` is exact by default, `search` is meaning-oriented hybrid search, and `recall` is task context. |
 | Verbatim archive mode | Missing | Raw blobs/files are canonical, but there is no explicit archive-only mode or archive surface. |
 | Explicit memory scopes | Missing/partial | Workspaces, path zones, and `project_hint` exist; no durable `scope` model or scoped filters. |
 | Memory candidate review workflow | Partial | Promotions and stale review exist; first-class candidate list/edit/approve/reject workflow is missing. |
@@ -40,28 +40,27 @@ This audit covers the current `elatd/memfs` monorepo surfaces:
 | Simple SDK ergonomics | Partial | HTTP client exists, but it returns `unknown` and lacks high-level workspace-bound helpers. |
 | MCP tool coverage | Partial | Many tools exist; several current and proposed surfaces are not exposed. |
 
-## 1. Hybrid Memory Grep
+## 1. Retrieval Command Split
 
 ### Current Status
 
-Partial.
+Existing.
 
 Existing behavior:
 
-- `apps/cli/src/index.ts` implements `memfs grep <query>` by collecting literal matches from workspace files and appending `client.searchMemory(...)` results.
-- `packages/virtual-bash/src/index.ts` implements `grep` similarly: literal file search plus `memoryfs.searchMemory(...)`.
-- `packages/core/src/index.ts` has `searchMemory(...)`, but it is just `recallMemory(...)` with `include_detail: true`.
+- `apps/cli/src/index.ts` implements `memfs grep <query>` as exact text search by default and `memfs search <query>` as meaning-oriented hybrid search.
+- `memfs sgrep <query>` is a deprecated compatibility alias for `memfs search --semantic <query>`.
+- `packages/virtual-bash/src/index.ts` follows the same split: `grep` exact, `search` hybrid, `sgrep` as a semantic alias.
+- `packages/core/src/index.ts` exposes `grepMemory(...)` with `literal`, `semantic`, and `hybrid` modes; the default mode is `literal`.
+- `packages/core/src/index.ts` has `searchMemory(...)` as a recall-shaped meaning search for compatibility.
 - `recallMemory(...)` scores trigger, summary, keyword, detail/raw excerpt embeddings, importance, recency, path/project match, and graph score.
-- `apps/mcp/src/server.ts` exposes `memfs_memory_search`, but not a dedicated `memfs_grep` tool.
-- `packages/mount-core/src/index.ts` exposes `.memfs/search.query`, but it calls memory search only, not literal file matching.
+- `apps/mcp/src/server.ts` exposes both `memfs_grep` and `memfs_memory_search`.
+- `packages/mount-core/src/index.ts` exposes `.memfs/search.query` as meaning-oriented hybrid search.
 
-Missing behavior:
+Remaining possible improvements:
 
-- No API-level hybrid result type that combines literal file matches, extracted-source matches, BM25/keyword results, and semantic memory nodes.
-- No search modes such as `literal`, `semantic`, `hybrid`.
-- No CLI flags such as `--literal`, `--semantic`, `--hybrid`, `--trusted-only`, `--include-runs`, `--scope`, or `--limit`.
-- No MCP tool named `memfs_grep`.
-- No structured result provenance like `result_type`, `line`, `source_location`, `trust`, and `match_reason` in one common grep packet.
+- Consider an SQLite FTS table if literal search over large workspaces becomes too slow.
+- Keep API `/memory/search` response compatibility in mind if unifying all search result shapes later.
 
 ### Likely Model And DB Changes
 
@@ -93,7 +92,8 @@ Files:
 
 ### Likely CLI Changes
 
-- Keep `memfs grep "query"` as the default hybrid command.
+- Keep `memfs grep "query"` as the exact text command.
+- Keep `memfs search "query"` as the meaning-oriented hybrid command.
 - Add flags:
   - `--literal`
   - `--semantic`
@@ -102,7 +102,7 @@ Files:
   - `--include-runs`
   - `--scope <scope>`
   - `--limit <n>`
-- Consider making `memfs sgrep` an alias for `memfs grep --semantic`.
+- Keep `memfs sgrep` only as a compatibility alias for `memfs search --semantic`.
 
 Files:
 

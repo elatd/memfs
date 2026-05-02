@@ -14,7 +14,8 @@ const shell = createMemoryFsShell({
 await shell.exec("ls /projects");
 await shell.exec("cat /projects/pipsqueak/decisions.md");
 await shell.exec('write /runs/demo/result.md "We decided to simplify onboarding."');
-await shell.exec('sgrep "onboarding decision"');
+await shell.exec('grep "simplify onboarding"');
+await shell.exec('search "onboarding decision"');
 await shell.exec('recall "What should I remember before changing onboarding?"');
 ```
 
@@ -27,14 +28,23 @@ Supported commands:
 - `rm`
 - `mkdir`
 - `grep`
-- `sgrep`
+- `search`
 - `recall`
 - `node list`
 - `node read <node_id>`
 - `raw <node_id>`
 - `status`
 
-`grep` maps to hybrid memory grep by default. Use `--literal`, `--semantic`, `--hybrid`, scope flags, or `--include-stale` for stale/superseded audit searches.
+Retrieval rule of thumb:
+
+```text
+Know the words?   use grep
+Know the idea?    use search
+Starting a task?  use recall or brief
+Need proof?       use cat, node read, or raw
+```
+
+`grep` is exact text search by default. `search` runs meaning-oriented hybrid search and accepts `--semantic`, `--hybrid`, scope flags, and `--include-stale` for stale/superseded audit searches. `sgrep` remains available as a deprecated compatibility alias for `search --semantic`.
 
 Each call returns:
 

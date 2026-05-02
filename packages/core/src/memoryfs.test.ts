@@ -208,7 +208,9 @@ describe("MemoryFS core", () => {
       }
     );
 
-    const grep = await memoryfs.grepMemory(workspace.id, "OAuth refresh tokens");
+    const grep = await memoryfs.grepMemory(workspace.id, "OAuth refresh tokens", {
+      mode: "hybrid"
+    });
 
     expect(grep.mode).toBe("hybrid");
     expect(grep.results[0]).toMatchObject({
@@ -1502,7 +1504,7 @@ describe("MemoryFS core", () => {
     expect(stale.some((candidate) => candidate.node.id === trusted.id)).toBe(false);
   });
 
-  it("excludes stale memories from recall and semantic grep unless requested", async () => {
+  it("excludes stale memories from recall and semantic search unless requested", async () => {
     const workspace = memoryfs.createWorkspace("demo");
     await memoryfs.writeFile(workspace.id, "/scratch/backend-plan.md", "Decision: Backend plan uses the MVP Rails service.", {
       actor: "agent:test",

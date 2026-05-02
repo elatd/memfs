@@ -9,7 +9,7 @@ Date: 2026-05-01
 - Mount daemon: optional FUSE-backed `@memoryfs/mountd` with read and write operations where `fuse-native` is available.
 - `.memfs` control directory: status, recall query/results, search query/results, audit, health, and README files.
 - Audit coverage for mount lifecycle, reads, writes, deletes, protected denials, recall queries, and search queries where audit support is available.
-- Virtual bash agent UX: file operations, grep, semantic grep, recall, brief, run lifecycle, promotions, health, and sync status.
+- Virtual bash agent UX: file operations, exact grep, meaning-oriented search, recall, brief, run lifecycle, promotions, health, and sync status.
 
 ## Safety Fixes
 

@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createMemfsMcpToolHandlers, type McpToolHandlers } from "./server.js";
+import { createMemfsMcpServer, createMemfsMcpToolHandlers, type McpToolHandlers } from "./server.js";
 
 let tempDir: string;
 let memoryfs: MemoryFS;
@@ -28,6 +28,15 @@ afterEach(async () => {
 });
 
 describe("MemFS MCP handlers", () => {
+  it("defaults MCP grep tool schemas to literal mode", () => {
+    const server = createMemfsMcpServer(memoryfs) as unknown as {
+      _registeredTools: Record<string, { inputSchema: { parse: (input: unknown) => { mode: string } } }>;
+    };
+
+    expect(server._registeredTools.memfs_grep?.inputSchema.parse({ workspace_id: workspaceId, query: "OAuth" }).mode).toBe("literal");
+    expect(server._registeredTools.memoryfs_grep?.inputSchema.parse({ workspace_id: workspaceId, query: "OAuth" }).mode).toBe("literal");
+  });
+
   it("reads and writes files", async () => {
     await handlers.memfs_file_write({
       workspace_id: workspaceId,
