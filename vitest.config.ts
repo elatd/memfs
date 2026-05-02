@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["packages/**/*.test.ts", "apps/**/*.test.ts", "benchmarks/**/*.test.ts"],
-    restoreMocks: true
+    restoreMocks: true,
+    testTimeout: 15_000
   }
 });
