@@ -4,24 +4,24 @@ Base URL: `http://localhost:3131`
 
 ## SDK
 
-`@memoryfs/sdk` exposes two layers:
+`@verifs/sdk` exposes two layers:
 
-- `MemoryFSClient`: low-level HTTP methods that map closely to API routes.
-- `MemFSClient`: a small high-level client for application and agent integrations.
+- `VeriFSApiClient`: low-level HTTP methods that map closely to API routes.
+- `VeriFSClient`: a small high-level client for application and agent integrations.
 
 ```ts
-import { MemFSClient } from "@memoryfs/sdk";
+import { VeriFSClient } from "@verifs/sdk";
 
-const memfs = new MemFSClient({ apiUrl: "http://localhost:3131" });
+const verifs = new VeriFSClient({ apiUrl: "http://localhost:3131" });
 
-await memfs.remember({
+await verifs.remember({
   workspace: "doozy",
   text: "The user prefers Netlify Functions for backend MVPs.",
   scope: "workspace",
   source: "explicit_user_instruction"
 });
 
-const results = await memfs.recall({
+const results = await verifs.recall({
   workspace: "doozy",
   query: "backend preference"
 });
@@ -56,7 +56,7 @@ Record audit body:
   "actor": "mount:local",
   "event_type": "mount.started",
   "payload": {
-    "mountpoint": "/Users/me/MemFS/demo"
+    "mountpoint": "/Users/me/VeriFS/demo"
   }
 }
 ```
@@ -247,7 +247,7 @@ For source files and runs, use typed endpoints:
   "to_type": "run",
   "to_id": "run-id",
   "relation_type": "observed_in",
-  "source_ref": "memoryfs://workspace/runs/run-id/reasoning-memories.json#sha"
+  "source_ref": "verifs://workspace/runs/run-id/reasoning-memories.json#sha"
 }
 ```
 
@@ -362,4 +362,4 @@ Member body:
 }
 ```
 
-When `MEMFS_AUTH_REQUIRED=true`, send an actor identity with either `Authorization: Bearer <actor>` or `x-memfs-actor: <actor>`. Local mode remains unauthenticated by default.
+When `VERIFS_AUTH_REQUIRED=true`, send an actor identity with either `Authorization: Bearer <actor>` or `x-verifs-actor: <actor>`. Local mode remains unauthenticated by default.

@@ -1,4 +1,4 @@
--- Postgres-compatible schema for MemFS team/cloud metadata.
+-- Postgres-compatible schema for VeriFS team/cloud metadata.
 -- It intentionally mirrors the SQLite migration shape where practical so
 -- local-first sync can move payloads between stores without remapping fields.
 

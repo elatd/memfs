@@ -1,15 +1,15 @@
 # Object Storage
 
-MemFS stores raw content by SHA-256. Local mode writes to `data/blobs`; cloud/team mode can use `ObjectBlobStore` with an S3-compatible client.
+VeriFS stores raw content by SHA-256. Local mode writes to `data/blobs`; cloud/team mode can use `ObjectBlobStore` with an S3-compatible client.
 
 Configuration names:
 
 ```bash
-MEMFS_OBJECT_STORE_ENDPOINT=
-MEMFS_OBJECT_STORE_BUCKET=memfs
-MEMFS_OBJECT_STORE_REGION=auto
-MEMFS_OBJECT_STORE_ACCESS_KEY_ID=
-MEMFS_OBJECT_STORE_SECRET_ACCESS_KEY=
+VERIFS_OBJECT_STORE_ENDPOINT=
+VERIFS_OBJECT_STORE_BUCKET=verifs
+VERIFS_OBJECT_STORE_REGION=auto
+VERIFS_OBJECT_STORE_ACCESS_KEY_ID=
+VERIFS_OBJECT_STORE_SECRET_ACCESS_KEY=
 ```
 
 The MVP does not require a specific S3 SDK. `ObjectBlobStore` accepts a tiny client interface:

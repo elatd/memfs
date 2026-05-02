@@ -1,25 +1,25 @@
-import { MemoryFS } from "@memoryfs/core";
+import { VeriFS } from "@verifs/core";
 import { resolve } from "node:path";
 
-const configuredDataDir = process.env.MEMFS_DATA_DIR ?? process.env.MEMORYFS_DATA_DIR;
+const configuredDataDir = process.env.VERIFS_DATA_DIR;
 const dataDir = configuredDataDir
   ? resolve(process.cwd(), configuredDataDir)
   : resolve(process.cwd(), "data");
 
-const memoryfs = new MemoryFS({
+const verifs = new VeriFS({
   dataDir,
   memory: {
     apiKey: process.env.OPENAI_API_KEY,
     baseUrl: process.env.OPENAI_BASE_URL,
-    chatModel: process.env.MEMORYFS_CHAT_MODEL ?? "gpt-4o-mini",
-    embedModel: process.env.MEMORYFS_EMBED_MODEL ?? "text-embedding-3-small",
-    useLlm: process.env.MEMORYFS_DEMO_USE_LLM === "true"
+    chatModel: process.env.VERIFS_CHAT_MODEL ?? "gpt-4o-mini",
+    embedModel: process.env.VERIFS_EMBED_MODEL ?? "text-embedding-3-small",
+    useLlm: process.env.VERIFS_DEMO_USE_LLM === "true"
   }
 });
 
-await memoryfs.initialize();
+await verifs.initialize();
 
-const workspace = memoryfs.createWorkspace("demo");
+const workspace = verifs.createWorkspace("demo");
 
 const files = [
   {
@@ -63,14 +63,14 @@ Open question: Decide whether the collapsed form should remember the last select
 ];
 
 for (const file of files) {
-  await memoryfs.writeFile(workspace.id, file.path, file.content, {
+  await verifs.writeFile(workspace.id, file.path, file.content, {
     actor: "agent:demo-seed",
     ingest: true,
     allow_protected_write: file.protected
   });
 }
 
-const recall = await memoryfs.recallMemory(workspace.id, "What should I remember before changing Pipsqueak onboarding?", {
+const recall = await verifs.recallMemory(workspace.id, "What should I remember before changing Pipsqueak onboarding?", {
   limit: 5,
   include_detail: true,
   include_raw: false,
@@ -79,4 +79,4 @@ const recall = await memoryfs.recallMemory(workspace.id, "What should I remember
 
 console.log(JSON.stringify({ workspace, recall }, null, 2));
 
-memoryfs.close();
+verifs.close();

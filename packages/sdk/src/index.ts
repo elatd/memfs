@@ -52,12 +52,12 @@ import type {
   SyncStatus,
   TeamMember,
   Workspace
-} from "@memoryfs/core";
+} from "@verifs/core";
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 
-export class MemoryFSClientError extends Error {
+export class VeriFSClientError extends Error {
   constructor(
     message: string,
     public readonly statusCode: number
@@ -66,7 +66,7 @@ export class MemoryFSClientError extends Error {
   }
 }
 
-export class MemoryFSNotFoundError extends MemoryFSClientError {}
+export class VeriFSNotFoundError extends VeriFSClientError {}
 
 export interface ClientWriteOptions {
   actor?: string;
@@ -287,7 +287,7 @@ export interface DeleteGraphEdgePacket {
   edge: MemoryGraphEdgePacket;
 }
 
-export interface MemFSClientOptions {
+export interface VeriFSClientOptions {
   apiUrl?: string;
   actor?: string;
   createWorkspaceIfMissing?: boolean;
@@ -395,7 +395,7 @@ export interface BriefCreateInput extends WorkspaceInput, ClientBriefOptions {
   task: string;
 }
 
-export class MemoryFSClient {
+export class VeriFSApiClient {
   constructor(private readonly baseUrl = "http://localhost:3131") {}
 
   createWorkspace(name: string): Promise<Workspace> {
@@ -945,20 +945,20 @@ export class MemoryFSClient {
 
     if (!response.ok) {
       const errorBody = (await response.json().catch(() => null)) as { error?: string } | null;
-      const message = errorBody?.error ?? `MemoryFS request failed with ${response.status}.`;
-      if (response.status === 404) throw new MemoryFSNotFoundError(message, response.status);
-      throw new MemoryFSClientError(message, response.status);
+      const message = errorBody?.error ?? `VeriFS request failed with ${response.status}.`;
+      if (response.status === 404) throw new VeriFSNotFoundError(message, response.status);
+      throw new VeriFSClientError(message, response.status);
     }
 
     return response.json() as Promise<T>;
   }
 }
 
-export function createMemoryFSClient(baseUrl?: string): MemoryFSClient {
-  return new MemoryFSClient(baseUrl);
+export function createVeriFSApiClient(baseUrl?: string): VeriFSApiClient {
+  return new VeriFSApiClient(baseUrl);
 }
 
-export class MemFSClient extends MemoryFSClient {
+export class VeriFSClient extends VeriFSApiClient {
   private readonly defaultActor: string;
   private readonly createMissingWorkspaces: boolean;
   private readonly workspaceCache = new Map<string, string>();
@@ -1050,7 +1050,7 @@ export class MemFSClient extends MemoryFSClient {
     }
   };
 
-  constructor(options: MemFSClientOptions | string = {}) {
+  constructor(options: VeriFSClientOptions | string = {}) {
     const apiUrl = typeof options === "string" ? options : options.apiUrl;
     super(apiUrl);
     this.defaultActor = typeof options === "string" ? "agent:sdk" : options.actor ?? "agent:sdk";
@@ -1064,7 +1064,7 @@ export class MemFSClient extends MemoryFSClient {
     const source = input.source ?? "agent_observation";
     const reviewer = input.reviewer ?? input.actor ?? this.defaultActor;
     if (input.approved && !reviewer.startsWith("human:")) {
-      throw new Error("MemFS remember({ approved: true }) requires a human reviewer or human actor.");
+      throw new Error("VeriFS remember({ approved: true }) requires a human reviewer or human actor.");
     }
     const reason = input.reason ?? `Remembered via SDK source=${source}.`;
     const candidate = await this.createCandidate(workspaceId, {
@@ -1098,7 +1098,7 @@ export class MemFSClient extends MemoryFSClient {
 
     const candidateId = candidate.id ?? candidate.node_id;
     if (!candidateId) {
-      throw new Error("MemFS remember could not identify the created candidate.");
+      throw new Error("VeriFS remember could not identify the created candidate.");
     }
     const approved = await this.approveCandidate(workspaceId, candidateId, {
       reviewer,
@@ -1165,14 +1165,14 @@ export class MemFSClient extends MemoryFSClient {
       return created.id;
     }
 
-    throw new Error(`MemFS workspace not found: ${selector}`);
+    throw new Error(`VeriFS workspace not found: ${selector}`);
   }
 
   private async resolveRunWorkspace(runId: string, workspace?: string): Promise<string> {
     if (workspace) return this.resolveWorkspaceId({ workspace }, false);
     const workspaceId = this.runWorkspaceById.get(runId);
     if (!workspaceId) {
-      throw new Error(`MemFS run ${runId} is not associated with this client. Pass { workspace } or start the run with this client.`);
+      throw new Error(`VeriFS run ${runId} is not associated with this client. Pass { workspace } or start the run with this client.`);
     }
     return workspaceId;
   }
@@ -1205,8 +1205,8 @@ export class MemFSClient extends MemoryFSClient {
   }
 }
 
-export function createMemFSClient(options?: MemFSClientOptions | string): MemFSClient {
-  return new MemFSClient(options);
+export function createVeriFSClient(options?: VeriFSClientOptions | string): VeriFSClient {
+  return new VeriFSClient(options);
 }
 
 function stripWorkspace<T extends WorkspaceInput>(input: T): Omit<T, "workspace" | "actor" | "createWorkspace"> {
@@ -1273,5 +1273,5 @@ function runArtifactForKind(kind: string): string {
 }
 
 function isMissingResourceError(error: unknown): boolean {
-  return error instanceof MemoryFSNotFoundError;
+  return error instanceof VeriFSNotFoundError;
 }

@@ -1,6 +1,6 @@
 # Trust Layer
 
-MemFS separates easy agent writing from durable memory.
+VeriFS separates easy agent writing from durable memory.
 
 Memory zones:
 
@@ -20,7 +20,7 @@ Trust levels:
 - `superseded`
 - `rejected`
 
-Normal recall excludes `pending`, candidate-like, `rejected`, `stale`, `conflicted`, and `superseded` nodes. Rejected memory is retrievable only with `include_rejected=true`; stale, conflicted, and superseded memory is retrievable for audit with `include_stale=true` or `memfs grep --include-stale`. Trust and lifecycle fields are shown in recall packets with `include_trust=true`.
+Normal recall excludes `pending`, candidate-like, `rejected`, `stale`, `conflicted`, and `superseded` nodes. Rejected memory is retrievable only with `include_rejected=true`; stale, conflicted, and superseded memory is retrievable for audit with `include_stale=true` or `verifs grep --include-stale`. Trust and lifecycle fields are shown in recall packets with `include_trust=true`.
 
 Superseded memories remain stored for audit and history, but they are not treated as current truth by default. They are marked through graph links, trust metadata, `valid_until`, and lifecycle status, not deleted.
 
@@ -36,6 +36,6 @@ Temporal fields:
 
 Review actions update these fields and write audit events:
 
-- `memfs memory mark-stale <id> --reason "..."`
-- `memfs memory confirm <id>`
-- `memfs memory supersede <old_id> <new_id>`
+- `verifs memory mark-stale <id> --reason "..."`
+- `verifs memory confirm <id>`
+- `verifs memory supersede <old_id> <new_id>`

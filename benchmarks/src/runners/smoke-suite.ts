@@ -28,7 +28,7 @@ interface SmokeSuiteOptions {
 }
 
 const DEFAULT_DATASET_PATH = fileURLToPath(
-  new URL("../../datasets/memfs-smoke/samples.jsonl", import.meta.url)
+  new URL("../../datasets/verifs-smoke/samples.jsonl", import.meta.url)
 );
 
 export async function runSmokeSuite(options: SmokeSuiteOptions): Promise<SmokeBenchmarkResult> {

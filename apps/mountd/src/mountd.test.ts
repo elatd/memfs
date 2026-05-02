@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { MountCoreError, type MountCore } from "@memoryfs/mount-core";
+import { MountCoreError, type MountCore } from "@verifs/mount-core";
 import {
   createFuseOperations,
   fuseErrorCode,
@@ -18,7 +18,7 @@ describe("mountd config", () => {
   it("parses read-write flags and defaults safely", () => {
     const parsed = parseMountdArgs([
       "demo",
-      "~/MemFS/demo",
+      "~/VeriFS/demo",
       "--read-write",
       "--ingest-on-write",
       "--allow-protected-write",
@@ -28,11 +28,11 @@ describe("mountd config", () => {
       "/runs/today"
     ], {
       HOME: "/tmp/home",
-      MEMFS_API_URL: "http://127.0.0.1:3131"
+      VERIFS_API_URL: "http://127.0.0.1:3131"
     });
 
     expect(parsed.workspace).toBe("demo");
-    expect(parsed.mountpoint).toBe("/tmp/home/MemFS/demo");
+    expect(parsed.mountpoint).toBe("/tmp/home/VeriFS/demo");
     expect(parsed.mode).toBe("read-write");
     expect(parsed.ingestOnWrite).toBe(true);
     expect(parsed.allowProtectedWrite).toBe(true);
@@ -120,21 +120,21 @@ describe("mount registry", () => {
   });
 
   it("ignores missing registry files", async () => {
-    tempDir = await mkdtemp(path.join(tmpdir(), "memfs-mountd-test-"));
-    const env = { MEMFS_CONFIG_DIR: tempDir };
+    tempDir = await mkdtemp(path.join(tmpdir(), "verifs-mountd-test-"));
+    const env = { VERIFS_CONFIG_DIR: tempDir };
 
     expect(mountRegistryPath(env)).toBe(path.join(tempDir, "mounts.json"));
     expect(await listMountRegistry(env)).toEqual([]);
   });
 
   it("filters dead pids from status", async () => {
-    tempDir = await mkdtemp(path.join(tmpdir(), "memfs-mountd-test-"));
-    const env = { MEMFS_CONFIG_DIR: tempDir };
+    tempDir = await mkdtemp(path.join(tmpdir(), "verifs-mountd-test-"));
+    const env = { VERIFS_CONFIG_DIR: tempDir };
     await writeFile(
       mountRegistryPath(env),
       JSON.stringify([
         {
-          mountpoint: "/tmp/memfs",
+          mountpoint: "/tmp/verifs",
           workspaceId: "ws",
           workspaceName: "demo",
           pid: 99999999,

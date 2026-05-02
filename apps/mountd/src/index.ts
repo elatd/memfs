@@ -7,8 +7,8 @@ import {
   type MountCore,
   type MountMode,
   type MountNodeType
-} from "@memoryfs/mount-core";
-import { MemoryFSClient } from "@memoryfs/sdk";
+} from "@verifs/mount-core";
+import { VeriFSClient } from "@verifs/sdk";
 import { constants as fsConstants } from "node:fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir, platform, userInfo } from "node:os";
@@ -113,7 +113,7 @@ interface FuseConstructor extends Partial<FuseConstants> {
 
 export function parseMountdArgs(argv: string[], env: NodeJS.ProcessEnv = process.env): MountdConfig {
   const positional: string[] = [];
-  let apiUrl = env.MEMFS_API_URL ?? "http://localhost:3131";
+  let apiUrl = env.VERIFS_API_URL ?? "http://localhost:3131";
   let readOnly = false;
   let readWrite = false;
   let ingestOnWrite = false;
@@ -145,7 +145,7 @@ export function parseMountdArgs(argv: string[], env: NodeJS.ProcessEnv = process
   if (readOnly && readWrite) throw new Error("--read-only and --read-write are mutually exclusive.");
   const [workspace, mountpoint] = positional;
   if (!workspace || !mountpoint) {
-    throw new Error("Usage: memfs-mountd <workspace> <mountpoint> [--read-only|--read-write]");
+    throw new Error("Usage: verifs-mountd <workspace> <mountpoint> [--read-only|--read-write]");
   }
 
   return {
@@ -440,7 +440,7 @@ export async function runMountd(argv: string[], env: NodeJS.ProcessEnv = process
   await assertFuseConfigured(Fuse);
   await validateMountpoint(config);
 
-  const client = new MemoryFSClient(config.apiUrl);
+  const client = new VeriFSClient(config.apiUrl);
   const workspaces = await client.listWorkspaces() as Array<{ id: string; name: string }>;
   const workspace = workspaces.find((entry) => entry.id === config.workspace || entry.name === config.workspace);
   if (!workspace) throw new Error(`Workspace not found: ${config.workspace}`);
@@ -494,7 +494,7 @@ export async function runMountd(argv: string[], env: NodeJS.ProcessEnv = process
       default_run_folder: config.defaultRunFolder ?? null
     }
   }).catch(() => null);
-  console.log(`MemFS mounted ${workspace.name} at ${config.mountpoint} (${config.mode}).`);
+  console.log(`VeriFS mounted ${workspace.name} at ${config.mountpoint} (${config.mode}).`);
 
   let unmounting = false;
   const unmount = async () => {
@@ -547,7 +547,7 @@ export async function unmountMount(mountpoint: string, env: NodeJS.ProcessEnv = 
 }
 
 export function mountRegistryPath(env: NodeJS.ProcessEnv = process.env): string {
-  return path.join(env.MEMFS_CONFIG_DIR ?? path.join(env.HOME ?? homedir(), ".memfs"), "mounts.json");
+  return path.join(env.VERIFS_CONFIG_DIR ?? path.join(env.HOME ?? homedir(), ".verifs"), "mounts.json");
 }
 
 async function loadFuse(): Promise<FuseConstructor> {
@@ -620,7 +620,7 @@ function resizeBuffer(existing: Buffer, size: number): Buffer {
 }
 
 function isControlQueryPath(filePath: string): boolean {
-  return filePath === "/.memfs/recall.query" || filePath === "/.memfs/search.query" || filePath === "/.memfs/brief.query";
+  return filePath === "/.verifs/recall.query" || filePath === "/.verifs/search.query" || filePath === "/.verifs/brief.query";
 }
 
 function toFuseStat(type: MountNodeType, size: number, timestamp: Date): Record<string, unknown> {

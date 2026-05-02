@@ -1,6 +1,6 @@
 # Storage Adapters
 
-MemFS keeps local mode as the default, but Phase 6 adds adapter boundaries for team and cloud deployments.
+VeriFS keeps local mode as the default, but Phase 6 adds adapter boundaries for team and cloud deployments.
 
 Interfaces live in `packages/core/src/adapters.ts` and `packages/db/src/adapters.ts`:
 

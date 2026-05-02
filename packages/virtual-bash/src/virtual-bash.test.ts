@@ -1,26 +1,26 @@
-import { MemoryFS } from "@memoryfs/core";
+import { VeriFS } from "@verifs/core";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createMemoryFsShell, splitArgs } from "./index.js";
+import { createVeriFSShell, splitArgs } from "./index.js";
 
 let tempDir: string;
-let memoryfs: MemoryFS;
+let verifs: VeriFS;
 let workspaceId: string;
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(path.join(tmpdir(), "memfs-shell-test-"));
-  memoryfs = new MemoryFS({
+  tempDir = await mkdtemp(path.join(tmpdir(), "verifs-shell-test-"));
+  verifs = new VeriFS({
     dataDir: tempDir,
     memory: { useLlm: false }
   });
-  await memoryfs.initialize();
-  workspaceId = memoryfs.createWorkspace("demo").id;
+  await verifs.initialize();
+  workspaceId = verifs.createWorkspace("demo").id;
 });
 
 afterEach(async () => {
-  memoryfs.close();
+  verifs.close();
   await rm(tempDir, { recursive: true, force: true });
 });
 
@@ -34,7 +34,7 @@ describe("virtual bash", () => {
   });
 
   it("executes ls cat write grep search and recall", async () => {
-    const shell = createMemoryFsShell({ memoryfs, workspaceId });
+    const shell = createVeriFSShell({ verifs, workspaceId });
 
     const write = await shell.exec('write /runs/demo/result.md "Decision: We decided to simplify onboarding."');
     expect(write.displayText).toContain("Wrote");
@@ -60,10 +60,10 @@ describe("virtual bash", () => {
   });
 
   it("passes include-stale through virtual grep", async () => {
-    const shell = createMemoryFsShell({ memoryfs, workspaceId });
+    const shell = createVeriFSShell({ verifs, workspaceId });
     await shell.exec('write /scratch/stale.md "Decision: Backend plan uses the old auth service."');
-    const node = memoryfs.listMemoryNodes(workspaceId).find((entry) => entry.source_path === "/scratch/stale.md")!;
-    memoryfs.markMemoryStale(workspaceId, node.id, {
+    const node = verifs.listMemoryNodes(workspaceId).find((entry) => entry.source_path === "/scratch/stale.md")!;
+    verifs.markMemoryStale(workspaceId, node.id, {
       actor: "human:test",
       reason: "Auth service changed"
     });
@@ -76,8 +76,8 @@ describe("virtual bash", () => {
   });
 
   it("denies protected write append and delete by default and audits denials", async () => {
-    const shell = createMemoryFsShell({ memoryfs, workspaceId });
-    await memoryfs.writeFile(workspaceId, "/preferences.md", "Protected seed", {
+    const shell = createVeriFSShell({ verifs, workspaceId });
+    await verifs.writeFile(workspaceId, "/preferences.md", "Protected seed", {
       actor: "test",
       ingest: false,
       allow_protected_write: true
@@ -87,23 +87,23 @@ describe("virtual bash", () => {
     await expect(shell.exec('append /preferences.md "should fail"')).rejects.toThrow(/Protected path/);
     await expect(shell.exec("rm /preferences.md")).rejects.toThrow(/Protected path/);
 
-    const auditTypes = memoryfs.listAuditEvents(workspaceId).map((event) => event.event_type);
+    const auditTypes = verifs.listAuditEvents(workspaceId).map((event) => event.event_type);
     expect(auditTypes.filter((type) => type === "protected_write_denied").length).toBeGreaterThanOrEqual(2);
     expect(auditTypes).toContain("protected_delete_denied");
-    expect((await memoryfs.readFile(workspaceId, "/preferences.md")).content).toBe("Protected seed");
+    expect((await verifs.readFile(workspaceId, "/preferences.md")).content).toBe("Protected seed");
   });
 
   it("allows protected writes only when shell construction opts in", async () => {
-    const shell = createMemoryFsShell({ memoryfs, workspaceId, allowProtectedWrite: true });
+    const shell = createVeriFSShell({ verifs, workspaceId, allowProtectedWrite: true });
 
     const write = await shell.exec('write /preferences.md "Allowed preference"');
 
     expect(write.displayText).toContain("Wrote /preferences.md");
-    expect((await memoryfs.readFile(workspaceId, "/preferences.md")).content).toBe("Allowed preference");
+    expect((await verifs.readFile(workspaceId, "/preferences.md")).content).toBe("Allowed preference");
   });
 
   it("executes brief run promote health and sync status commands", async () => {
-    const shell = createMemoryFsShell({ memoryfs, workspaceId });
+    const shell = createVeriFSShell({ verifs, workspaceId });
     await shell.exec('write /runs/demo/result.md "Decision: Keep onboarding simple."');
 
     const brief = await shell.exec('brief "change onboarding"');
@@ -142,17 +142,17 @@ describe("virtual bash", () => {
   });
 
   it("rejects unsupported commands", async () => {
-    const shell = createMemoryFsShell({ memoryfs, workspaceId });
+    const shell = createVeriFSShell({ verifs, workspaceId });
     await expect(shell.exec("pwd")).rejects.toThrow(/Unsupported/);
   });
 
   it("rejects path traversal", async () => {
-    const shell = createMemoryFsShell({ memoryfs, workspaceId });
+    const shell = createVeriFSShell({ verifs, workspaceId });
     await expect(shell.exec('cat /../secret.md')).rejects.toThrow(/Path traversal/);
   });
 
   it("rejects shell injection patterns", async () => {
-    const shell = createMemoryFsShell({ memoryfs, workspaceId });
+    const shell = createVeriFSShell({ verifs, workspaceId });
     await expect(shell.exec('write /scratch/a.md "ok"; rm /scratch/a.md')).rejects.toThrow(/Unsupported shell syntax/);
   });
 });

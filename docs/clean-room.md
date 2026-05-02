@@ -1,6 +1,6 @@
 # Clean-Room Note
 
-MemFS is implemented from the product requirements in this repository only.
+VeriFS is implemented from the product requirements in this repository only.
 
 The implementation uses ordinary TypeScript, Fastify, SQLite, local disk storage, React, and MCP SDK APIs.
 

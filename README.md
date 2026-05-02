@@ -1,36 +1,36 @@
-# MemFS
+# VeriFS
 
-MemFS is a clean-room, local-first agent memory filesystem. Humans and agents work with ordinary files, while the system derives structured memory nodes for semantic recall.
+VeriFS is a clean-room, local-first agent memory filesystem. Humans and agents work with ordinary files, while the system derives structured memory nodes for semantic recall.
 
 Raw files are always the source of truth. Memory nodes are retrieval indexes with summaries, triggers, details, source references, tags, importance, confidence, and links.
 
-MemFS includes a trust layer for long-lived memory: scratch and run memory can be written freely, durable memory flows through reviewable promotions, snapshots can be diffed and rolled back, and health reports make memory drift visible.
+VeriFS includes a trust layer for long-lived memory: scratch and run memory can be written freely, durable memory flows through reviewable promotions, snapshots can be diffed and rolled back, and health reports make memory drift visible.
 
-MemFS separates task execution from durable memory writing. Agents may propose memories freely, but MemFS validates, deduplicates, reviews, promotes, searches, and audits them through a memory curation pipeline. See [Memory Curation](./docs/memory-curation.md).
+VeriFS separates task execution from durable memory writing. Agents may propose memories freely, but VeriFS validates, deduplicates, reviews, promotes, searches, and audits them through a memory curation pipeline. See [Memory Curation](./docs/memory-curation.md).
 
 Task workflows are built in: pre-task briefs, run folders, memory-used logs, compile-run candidate memories, handoff summaries, and stale memory review help agents carry context across sessions.
 
-MemFS can ingest common local files while preserving source references. Markdown, text, JSON, CSV, HTML, PDF, DOCX, code, and terminal logs are extracted into derived text with source locations; images still fail gracefully unless OCR/caption extraction is configured later.
+VeriFS can ingest common local files while preserving source references. Markdown, text, JSON, CSV, HTML, PDF, DOCX, code, and terminal logs are extracted into derived text with source locations; images still fail gracefully unless OCR/caption extraction is configured later.
 
 Local SQLite mode is the default. Optional team and cloud foundations include storage adapters, Postgres metadata support, object blob storage, sync events, role-based permissions, conflict detection, and conflict resolution.
 
-A MemFS workspace can also be browsed as a mounted filesystem. Mounts are read-only by default and read-write only when requested; writes still go through MemFS core/API so protected path checks, ingestion flags, and audit events remain intact.
+A VeriFS workspace can also be browsed as a mounted filesystem. Mounts are read-only by default and read-write only when requested; writes still go through VeriFS core/API so protected path checks, ingestion flags, and audit events remain intact.
 
-## How MemFS is different
+## How VeriFS is different
 
-MemFS is not just a vector database, memory API, or mounted cloud memory folder. MemFS is a local-first, source-backed memory filesystem for AI agents. Humans and agents work with ordinary files, while MemFS derives memory nodes for semantic recall. Raw files remain canonical. Durable memory can be proposed, reviewed, promoted, audited, superseded, snapshotted, and rolled back.
+VeriFS is not just a vector database, memory API, or mounted cloud memory folder. VeriFS is a local-first, source-backed memory filesystem for AI agents. Humans and agents work with ordinary files, while VeriFS derives memory nodes for semantic recall. Raw files remain canonical. Durable memory can be proposed, reviewed, promoted, audited, superseded, snapshotted, and rolled back.
 
-See [How MemFS Compares](./docs/comparisons.md) for a concise positioning matrix.
+See [How VeriFS Compares](./docs/comparisons.md) for a concise positioning matrix.
 
 ## Clean-Room Note
 
-MemFS is a new implementation based on the requirements in this repository. It is designed around ordinary files, local metadata, source-backed memory nodes, and progressive recall.
+VeriFS is a new implementation based on the requirements in this repository. It is designed around ordinary files, local metadata, source-backed memory nodes, and progressive recall.
 
 It uses a TypeScript monorepo, Fastify, SQLite metadata, local disk blobs, a Vite dashboard, an MCP server, a small virtual shell, an SDK, and an optional FUSE-backed mount daemon.
 
 ## Permissive Usage
 
-MemFS is provided under the MIT License. You may use, copy, modify, merge, publish, distribute, sublicense, and sell copies of the software, subject to the license notice in [LICENSE](./LICENSE).
+VeriFS is provided under the MIT License. You may use, copy, modify, merge, publish, distribute, sublicense, and sell copies of the software, subject to the license notice in [LICENSE](./LICENSE).
 
 ## Setup
 
@@ -50,27 +50,26 @@ corepack prepare pnpm@9.15.4 --activate
 
 - `OPENAI_API_KEY`: optional OpenAI-compatible API key.
 - `OPENAI_BASE_URL`: optional compatible API base URL.
-- `MEMORYFS_CHAT_MODEL`: defaults to `gpt-4o-mini`.
-- `MEMORYFS_EMBED_MODEL`: defaults to `text-embedding-3-small`.
-- `MEMORYFS_USE_LOCAL_EMBEDDINGS`: set to `0` to disable local ONNX embeddings; enabled by default outside tests when no API key is used.
-- `MEMORYFS_LOCAL_EMBED_MODEL`: defaults to `Xenova/all-MiniLM-L6-v2`.
-- `MEMORYFS_LOCAL_EMBED_LOCAL_ONLY`: set to `1` to require an already cached local embedding model.
-- `MEMORYFS_MODEL_CACHE_DIR`: optional cache directory for local ONNX models.
-- `MEMORYFS_REQUIRE_LOCAL_EMBEDDINGS`: set to `1` to fail instead of using deterministic lexical fallback when local embeddings cannot load.
-- `MEMORYFS_MODEL_TIMEOUT_MS`: defaults to `20000`.
-- `MEMORYFS_DEMO_USE_LLM`: set to `true` if the demo seed should call the configured model.
-- `MEMORYFS_DATA_DIR`: defaults to `./data`.
-- `MEMFS_DATA_DIR`: preferred data directory name; falls back to `MEMORYFS_DATA_DIR`.
-- `MEMORYFS_API_PORT`: defaults to `3131`.
+- `VERIFS_CHAT_MODEL`: defaults to `gpt-4o-mini`.
+- `VERIFS_EMBED_MODEL`: defaults to `text-embedding-3-small`.
+- `VERIFS_USE_LOCAL_EMBEDDINGS`: set to `0` to disable local ONNX embeddings; enabled by default outside tests when no API key is used.
+- `VERIFS_LOCAL_EMBED_MODEL`: defaults to `Xenova/all-MiniLM-L6-v2`.
+- `VERIFS_LOCAL_EMBED_LOCAL_ONLY`: set to `1` to require an already cached local embedding model.
+- `VERIFS_MODEL_CACHE_DIR`: optional cache directory for local ONNX models.
+- `VERIFS_REQUIRE_LOCAL_EMBEDDINGS`: set to `1` to fail instead of using deterministic lexical fallback when local embeddings cannot load.
+- `VERIFS_MODEL_TIMEOUT_MS`: defaults to `20000`.
+- `VERIFS_DEMO_USE_LLM`: set to `true` if the demo seed should call the configured model.
+- `VERIFS_DATA_DIR`: defaults to `./data`.
+- `VERIFS_API_PORT`: defaults to `3131`.
 - `VITE_API_BASE_URL`: defaults to `http://localhost:3131`.
-- `MEMFS_MODE`: `local`, `team`, or `cloud`; defaults to `local`.
-- `MEMFS_DATABASE_URL`: optional Postgres connection string for team/cloud metadata adapters.
-- `MEMFS_OBJECT_STORE_*`: optional S3-compatible object storage configuration.
-- `MEMFS_SYNC_ENABLED`: optional sync toggle.
-- `MEMFS_AUTH_REQUIRED`: require actor auth for API requests.
-- `MEMFS_ENCRYPTION_KEY`: reserved for encrypted cloud deployments.
+- `VERIFS_MODE`: `local`, `team`, or `cloud`; defaults to `local`.
+- `VERIFS_DATABASE_URL`: optional Postgres connection string for team/cloud metadata adapters.
+- `VERIFS_OBJECT_STORE_*`: optional S3-compatible object storage configuration.
+- `VERIFS_SYNC_ENABLED`: optional sync toggle.
+- `VERIFS_AUTH_REQUIRED`: require actor auth for API requests.
+- `VERIFS_ENCRYPTION_KEY`: reserved for encrypted cloud deployments.
 
-Without an API key, MemFS uses deterministic local extraction and local ONNX embeddings. The default local model is downloaded on first use and cached; if local embeddings are disabled or unavailable, MemFS falls back to a deterministic lexical embedding so local operation still works.
+Without an API key, VeriFS uses deterministic local extraction and local ONNX embeddings. The default local model is downloaded on first use and cached; if local embeddings are disabled or unavailable, VeriFS falls back to a deterministic lexical embedding so local operation still works.
 
 ## Run
 
@@ -83,32 +82,32 @@ The API runs on `http://localhost:3131`; the dashboard runs on `http://localhost
 Run only the API:
 
 ```bash
-pnpm --filter @memoryfs/api dev
+pnpm --filter @verifs/api dev
 ```
 
 Run only the web dashboard:
 
 ```bash
-pnpm --filter @memoryfs/web dev
+pnpm --filter @verifs/web dev
 ```
 
 Run the CLI:
 
 ```bash
-pnpm exec memfs help
-pnpm exec memfs workspace list
+pnpm exec verifs help
+pnpm exec verifs workspace list
 ```
 
-The command name is `memfs`. It talks to `http://localhost:3131` by default and accepts `MEMFS_API_URL`.
+The command name is `verifs`. It talks to `http://localhost:3131` by default and accepts `VERIFS_API_URL`.
 
 Mount a workspace:
 
 ```bash
-mkdir -p ~/MemFS/demo
-pnpm exec memfs mount demo ~/MemFS/demo --read-only
-pnpm exec memfs mount demo ~/MemFS/demo --read-write --ingest-on-write
-pnpm exec memfs mount status
-pnpm exec memfs unmount ~/MemFS/demo
+mkdir -p ~/VeriFS/demo
+pnpm exec verifs mount demo ~/VeriFS/demo --read-only
+pnpm exec verifs mount demo ~/VeriFS/demo --read-write --ingest-on-write
+pnpm exec verifs mount status
+pnpm exec verifs unmount ~/VeriFS/demo
 ```
 
 Read-write mounts are explicit. Protected writes fail unless `--allow-protected-write` is passed, and denied protected writes are audited.
@@ -116,7 +115,7 @@ Read-write mounts are explicit. Protected writes fail unless `--allow-protected-
 Run the MCP server:
 
 ```bash
-pnpm --filter @memoryfs/mcp dev
+pnpm --filter @verifs/mcp dev
 ```
 
 Seed demo data:
@@ -143,43 +142,43 @@ Run the deterministic benchmark smoke suite:
 pnpm bench:smoke
 ```
 
-The smoke suite compares a no-memory baseline with MemFS on a tiny source-backed fixture set and writes JSON/Markdown reports to `benchmarks/results/`. A 100% smoke result means the harness and deterministic fixtures are healthy; it is not a claim of broad benchmark superiority. LongMemEval, LoCoMo, and task-memory benchmarks are planned. See [Benchmarks](./benchmarks/README.md).
+The smoke suite compares a no-memory baseline with VeriFS on a tiny source-backed fixture set and writes JSON/Markdown reports to `benchmarks/results/`. A 100% smoke result means the harness and deterministic fixtures are healthy; it is not a claim of broad benchmark superiority. LongMemEval, LoCoMo, and task-memory benchmarks are planned. See [Benchmarks](./benchmarks/README.md).
 
 ## SDK Quickstart
 
-The high-level SDK keeps the Mem0-style path short while still using MemFS workspaces, files, candidates, runs, and review rules underneath:
+The high-level SDK keeps the Mem0-style path short while still using VeriFS workspaces, files, candidates, runs, and review rules underneath:
 
 ```ts
-import { MemFSClient } from "@memoryfs/sdk";
+import { VeriFSClient } from "@verifs/sdk";
 
-const memfs = new MemFSClient({ apiUrl: "http://localhost:3131" });
+const verifs = new VeriFSClient({ apiUrl: "http://localhost:3131" });
 
-await memfs.remember({
+await verifs.remember({
   workspace: "doozy",
   text: "The user prefers Netlify Functions for backend MVPs.",
   scope: "workspace",
   source: "explicit_user_instruction"
 });
 
-const results = await memfs.recall({
+const results = await verifs.recall({
   workspace: "doozy",
   query: "backend preference"
 });
 ```
 
-`remember()` creates a reviewable candidate by default. Pass `approved: true` only when the caller is making an explicit review decision; protected durable paths still flow through MemFS candidate approval, promotion, audit, and source-reference logic. Lower-level `MemoryFSClient` methods remain available for direct API access.
+`remember()` creates a reviewable candidate by default. Pass `approved: true` only when the caller is making an explicit review decision; protected durable paths still flow through VeriFS candidate approval, promotion, audit, and source-reference logic. Lower-level `VeriFSApiClient` methods remain available for direct API access.
 
 ## Example Agent Workflow
 
 ```ts
-import { MemoryFS } from "@memoryfs/core";
-import { VirtualBash } from "@memoryfs/virtual-bash";
+import { VeriFS } from "@verifs/core";
+import { VirtualBash } from "@verifs/virtual-bash";
 
-const memoryfs = new MemoryFS({ dataDir: "./data" });
-await memoryfs.initialize();
+const verifs = new VeriFS({ dataDir: "./data" });
+await verifs.initialize();
 
-const workspace = memoryfs.createWorkspace("project_pipsqueak");
-const bash = new VirtualBash(memoryfs, workspace.id);
+const workspace = verifs.createWorkspace("project_pipsqueak");
+const bash = new VirtualBash(verifs, workspace.id);
 
 await bash.exec('write /scratch/preferences.md "User prefers Netlify and Supabase"');
 const recall = await bash.exec("search 'hosting preference'");

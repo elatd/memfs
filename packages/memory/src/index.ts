@@ -851,7 +851,7 @@ export async function embedText(text: string, options: MemoryModelOptions = {}):
     try {
       return await requestLocalOnnxEmbedding(text, options);
     } catch (error) {
-      if (process.env.MEMORYFS_REQUIRE_LOCAL_EMBEDDINGS === "1" || options.allowEmbeddingFallback === false) {
+      if (process.env.VERIFS_REQUIRE_LOCAL_EMBEDDINGS === "1" || options.allowEmbeddingFallback === false) {
         throw error;
       }
     }
@@ -869,14 +869,14 @@ const localEmbeddingPipelines = new Map<string, Promise<LocalFeatureExtractor>>(
 
 function shouldUseLocalEmbeddings(options: MemoryModelOptions): boolean {
   if (options.useLocalEmbeddings !== undefined) return options.useLocalEmbeddings;
-  const env = process.env.MEMORYFS_USE_LOCAL_EMBEDDINGS;
+  const env = process.env.VERIFS_USE_LOCAL_EMBEDDINGS;
   if (env === "0" || env === "false") return false;
   if (env === "1" || env === "true") return true;
   return process.env.NODE_ENV !== "test";
 }
 
 async function requestLocalOnnxEmbedding(text: string, options: MemoryModelOptions): Promise<number[]> {
-  const model = options.localEmbedModel ?? process.env.MEMORYFS_LOCAL_EMBED_MODEL ?? "Xenova/all-MiniLM-L6-v2";
+  const model = options.localEmbedModel ?? process.env.VERIFS_LOCAL_EMBED_MODEL ?? "Xenova/all-MiniLM-L6-v2";
   let pipelinePromise = localEmbeddingPipelines.get(model);
   if (!pipelinePromise) {
     const nextPipelinePromise = createLocalEmbeddingPipeline(model).catch((error) => {
@@ -905,14 +905,14 @@ async function createLocalEmbeddingPipeline(model: string): Promise<LocalFeature
     cacheDir?: string;
   };
   envConfig.allowLocalModels = true;
-  envConfig.allowRemoteModels = process.env.MEMORYFS_LOCAL_EMBED_LOCAL_ONLY === "1" ? false : true;
-  if (process.env.MEMORYFS_MODEL_CACHE_DIR) {
-    envConfig.cacheDir = process.env.MEMORYFS_MODEL_CACHE_DIR;
+  envConfig.allowRemoteModels = process.env.VERIFS_LOCAL_EMBED_LOCAL_ONLY === "1" ? false : true;
+  if (process.env.VERIFS_MODEL_CACHE_DIR) {
+    envConfig.cacheDir = process.env.VERIFS_MODEL_CACHE_DIR;
   }
   const pipelineOptions: { local_files_only: boolean; device?: "wasm" } = {
-    local_files_only: process.env.MEMORYFS_LOCAL_EMBED_LOCAL_ONLY === "1"
+    local_files_only: process.env.VERIFS_LOCAL_EMBED_LOCAL_ONLY === "1"
   };
-  if (process.env.MEMORYFS_ONNX_RUNTIME === "web") {
+  if (process.env.VERIFS_ONNX_RUNTIME === "web") {
     pipelineOptions.device = "wasm";
   }
   const extractor = await transformers.pipeline("feature-extraction", model, pipelineOptions);
@@ -920,7 +920,7 @@ async function createLocalEmbeddingPipeline(model: string): Promise<LocalFeature
 }
 
 async function loadTransformersModule(): Promise<typeof import("@huggingface/transformers")> {
-  if (process.env.MEMORYFS_ONNX_RUNTIME !== "web") {
+  if (process.env.VERIFS_ONNX_RUNTIME !== "web") {
     return import("@huggingface/transformers");
   }
 
@@ -930,7 +930,7 @@ async function loadTransformersModule(): Promise<typeof import("@huggingface/tra
   const webEntry = path.join(distDir, "transformers.web.js");
   const mod = (await import(pathToFileURL(webEntry).href)) as typeof import("@huggingface/transformers");
   const onnxBackend = (mod.env as { backends?: { onnx?: { wasm?: { wasmPaths?: string } } } }).backends?.onnx;
-  if (onnxBackend?.wasm && !process.env.MEMORYFS_ONNX_WASM_REMOTE) {
+  if (onnxBackend?.wasm && !process.env.VERIFS_ONNX_WASM_REMOTE) {
     onnxBackend.wasm.wasmPaths = pathToFileURL(`${distDir}${path.sep}`).href;
   }
   return mod;
@@ -1143,7 +1143,7 @@ async function requestChatCompletion(prompt: string, options: Required<Pick<Memo
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      model: options.chatModel ?? process.env.MEMORYFS_CHAT_MODEL ?? "gpt-4o-mini",
+      model: options.chatModel ?? process.env.VERIFS_CHAT_MODEL ?? "gpt-4o-mini",
       messages: [
         {
           role: "user",
@@ -1179,7 +1179,7 @@ async function requestEmbedding(text: string, options: Required<Pick<MemoryModel
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      model: options.embedModel ?? process.env.MEMORYFS_EMBED_MODEL ?? "text-embedding-3-small",
+      model: options.embedModel ?? process.env.VERIFS_EMBED_MODEL ?? "text-embedding-3-small",
       input: text
     })
   });
@@ -1205,7 +1205,7 @@ function normalizeBaseUrl(baseUrl: string): string {
 }
 
 async function fetchWithTimeout(input: string, init: RequestInit): Promise<Response> {
-  const timeoutMs = Number(process.env.MEMORYFS_MODEL_TIMEOUT_MS ?? 20000);
+  const timeoutMs = Number(process.env.VERIFS_MODEL_TIMEOUT_MS ?? 20000);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {

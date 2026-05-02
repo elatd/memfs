@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MemFSClient } from "./index.js";
+import { VeriFSClient } from "./index.js";
 
 interface FetchCall {
   url: URL;
@@ -11,7 +11,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("MemFSClient", () => {
+describe("VeriFSClient", () => {
   it("remembers candidate memory by default without approving protected durable memory", async () => {
     const calls = mockFetch((call) => {
       if (call.method === "GET" && call.url.pathname === "/workspaces") {
@@ -22,9 +22,9 @@ describe("MemFSClient", () => {
       }
       throw new Error(`Unexpected request: ${call.method} ${call.url.pathname}`);
     });
-    const memfs = new MemFSClient({ apiUrl: "http://localhost:3131" });
+    const verifs = new VeriFSClient({ apiUrl: "http://localhost:3131" });
 
-    const remembered = await memfs.remember({
+    const remembered = await verifs.remember({
       workspace: "doozy",
       text: "The user prefers Netlify Functions for backend MVPs.",
       scope: "workspace",
@@ -55,9 +55,9 @@ describe("MemFSClient", () => {
       }
       throw new Error(`Unexpected request: ${call.method} ${call.url.pathname}`);
     });
-    const memfs = new MemFSClient({ apiUrl: "http://localhost:3131", actor: "human:test" });
+    const verifs = new VeriFSClient({ apiUrl: "http://localhost:3131", actor: "human:test" });
 
-    const remembered = await memfs.remember({
+    const remembered = await verifs.remember({
       workspace: "doozy",
       text: "Preference: Use Netlify Functions for backend MVPs.",
       source: "explicit_user_instruction",
@@ -102,18 +102,18 @@ describe("MemFSClient", () => {
       }
       throw new Error(`Unexpected request: ${call.method} ${call.url.pathname}`);
     });
-    const memfs = new MemFSClient({ apiUrl: "http://localhost:3131" });
+    const verifs = new VeriFSClient({ apiUrl: "http://localhost:3131" });
 
-    const run = await memfs.runs.start({
+    const run = await verifs.runs.start({
       workspace: "doozy",
       task: "Fix OAuth refresh tokens"
     });
-    await memfs.runs.append(run.id, {
+    await verifs.runs.append(run.id, {
       kind: "result",
       text: "Refresh token rotation fixed."
     });
-    await memfs.runs.finish(run.id);
-    await memfs.runs.compile(run.id, { reasoning: true });
+    await verifs.runs.finish(run.id);
+    await verifs.runs.compile(run.id, { reasoning: true });
 
     expect(run.status).toBe("running");
     expect(calls.some((call) => call.url.pathname === "/workspaces/ws-1/runs/run-1/start")).toBe(true);

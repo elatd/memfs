@@ -1,7 +1,7 @@
 Create or update AGENTS.md for this repository.
 
 Project:
-MemFS is a local-first agent memory filesystem. It combines:
+VeriFS is a local-first agent memory filesystem. It combines:
 1. Filesystem-style agent UX
 2. Structured memory nodes
 3. Progressive recall
@@ -19,7 +19,7 @@ Current architecture:
 - apps/web: React dashboard
 - apps/mcp: MCP server
 - data directory:
-  - ./data/memoryfs.db
+  - ./data/verifs.db
   - ./data/blobs/<prefix>/<sha256>
   - ./data/workspaces/<workspace_id>
 

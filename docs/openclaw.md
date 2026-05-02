@@ -1,18 +1,18 @@
 # OpenClaw And Coding Agent MCP Setup
 
-MemFS can be used as an MCP memory server for coding agents and OpenClaw-style agents. The server exposes safe tools for workspace setup, source-backed search, pre-task briefs, run notes, candidate memories, audit, snapshots, and memory health.
+VeriFS can be used as an MCP memory server for coding agents and OpenClaw-style agents. The server exposes safe tools for workspace setup, source-backed search, pre-task briefs, run notes, candidate memories, audit, snapshots, and memory health.
 
 ## Sample MCP Config
 
 ```json
 {
   "mcpServers": {
-    "memfs": {
+    "verifs": {
       "command": "pnpm",
-      "args": ["--dir", "/absolute/path/to/memfs", "--filter", "@memoryfs/mcp", "dev"],
+      "args": ["--dir", "/absolute/path/to/verifs", "--filter", "@verifs/mcp", "dev"],
       "env": {
-        "MEMFS_DATA_DIR": "/absolute/path/to/memfs/data",
-        "MEMFS_MODE": "local"
+        "VERIFS_DATA_DIR": "/absolute/path/to/verifs/data",
+        "VERIFS_MODE": "local"
       }
     }
   }
@@ -33,7 +33,7 @@ Longer version:
 2. Before project work, call `brief_create` with the task, project, repo, or likely files.
 3. Create a run with `run_create` or use the run returned by a brief.
 4. During work, use `run_append` or `file_append` under `/runs/<run_id>/...` for notes, results, errors, followups, and actions.
-5. Use `memfs_grep` when you know the exact words, `memory_search` when you know the idea, and `memory_recall` when you need task context. Prefer snippets, `source_path`, and `raw_ref`; call `memory_raw_source_read` only when raw source is explicitly needed.
+5. Use `verifs_grep` when you know the exact words, `memory_search` when you know the idea, and `memory_recall` when you need task context. Prefer snippets, `source_path`, and `raw_ref`; call `memory_raw_source_read` only when raw source is explicitly needed.
 6. Use `candidate_create` or `promotion_request` to propose durable memory. Normal agents should not approve protected durable memory.
 7. After work, call `run_complete`, then `run_compile` with `reasoning=true` when reusable lessons may exist.
 8. Use `handoff_create` when another agent or human needs to continue.
@@ -49,7 +49,7 @@ OpenClaw-style aliases:
 - `file_append`
 - `file_upload`
 - `file_extract`
-- `memfs_grep`
+- `verifs_grep`
 - `memory_recall`
 - `memory_search`
 - `memory_raw_source_read`
@@ -68,7 +68,7 @@ OpenClaw-style aliases:
 - `snapshot_create`
 - `health_report`
 
-The same functionality is also available through `memfs_*` tool names for clients that prefer namespaced tools.
+The same functionality is also available through `verifs_*` tool names for clients that prefer namespaced tools.
 
 ## Safety Model
 
@@ -76,7 +76,7 @@ The same functionality is also available through `memfs_*` tool names for client
 - Agents may propose memories and promotion requests.
 - Agents may not approve protected durable memory through the default MCP toolset.
 - Protected paths such as `/profile.md`, `/preferences.md`, `/projects/*/decisions.md`, and `/projects/*/constraints.md` require explicit `allow_protected_write=true`.
-- Raw source reads are explicit through `memory_raw_source_read` or `memfs_memory_raw_read`.
+- Raw source reads are explicit through `memory_raw_source_read` or `verifs_memory_raw_read`.
 - Recall, search, grep, briefs, and candidates return source paths and raw refs so agents can cite or inspect evidence without silently ingesting raw source.
 
 ## Minimal Workflow
@@ -86,7 +86,7 @@ workspace_list
 brief_create(workspace_id, task, project_slug?, files?)
 run_create(workspace_id, task)
 run_append(workspace_id, run_id, kind="note", text="...")
-memfs_grep(workspace_id, query)
+verifs_grep(workspace_id, query)
 candidate_create(workspace_id, memory_text, promotion_target_path?)
 run_complete(workspace_id, run_id, result?, errors?, followups?)
 run_compile(workspace_id, run_id, reasoning=true)

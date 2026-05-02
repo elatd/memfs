@@ -203,7 +203,7 @@ export const benchmarkQueries: BenchmarkQuery[] = [
 
 export const benchmarkLimitations = [
   "The fixture uses deterministic local extraction and hash embeddings, not a hosted embedding model.",
-  "Scores are useful for regression checks inside this repo, not for comparing MemFS to external systems.",
+  "Scores are useful for regression checks inside this repo, not for comparing VeriFS to external systems.",
   "The corpus is intentionally tiny, so top-k metrics can move when ranking heuristics change.",
   "Run and archive paths are generated at runtime; expected labels are resolved after seeding."
 ];

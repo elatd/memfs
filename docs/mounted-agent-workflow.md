@@ -1,39 +1,39 @@
 # Mounted Agent Workflow
 
-MemFS mounts are designed for agents that prefer ordinary file operations while still preserving MemFS safety guarantees.
+VeriFS mounts are designed for agents that prefer ordinary file operations while still preserving VeriFS safety guarantees.
 
 ## Recommended Flow
 
 1. Mount the workspace read-write only when the task needs file writes.
 
 ```bash
-pnpm exec memfs mount demo ~/MemFS/demo --read-write --ingest-on-write --actor mount:agent
+pnpm exec verifs mount demo ~/VeriFS/demo --read-write --ingest-on-write --actor mount:agent
 ```
 
 2. Put task artifacts under `/runs/`.
 
 ```bash
-mkdir -p ~/MemFS/demo/runs/today
-echo "Plan and actions go here." >> ~/MemFS/demo/runs/today/actions.md
-echo "Final task result." >> ~/MemFS/demo/runs/today/result.md
+mkdir -p ~/VeriFS/demo/runs/today
+echo "Plan and actions go here." >> ~/VeriFS/demo/runs/today/actions.md
+echo "Final task result." >> ~/VeriFS/demo/runs/today/result.md
 ```
 
 3. Use semantic control files for lightweight context checks.
 
 ```bash
-echo "What matters before changing onboarding?" > ~/MemFS/demo/.memfs/recall.query
-cat ~/MemFS/demo/.memfs/recall.results.md
+echo "What matters before changing onboarding?" > ~/VeriFS/demo/.verifs/recall.query
+cat ~/VeriFS/demo/.verifs/recall.results.md
 
-echo "onboarding decision" > ~/MemFS/demo/.memfs/search.query
-cat ~/MemFS/demo/.memfs/search.results.md
+echo "onboarding decision" > ~/VeriFS/demo/.verifs/search.query
+cat ~/VeriFS/demo/.verifs/search.results.md
 
-echo "Fix OAuth refresh token flow" > ~/MemFS/demo/.memfs/brief.query
-cat ~/MemFS/demo/.memfs/brief.results.md
+echo "Fix OAuth refresh token flow" > ~/VeriFS/demo/.verifs/brief.query
+cat ~/VeriFS/demo/.verifs/brief.results.md
 ```
 
 Each mount keeps its own latest `recall.results.md`, `search.results.md`, and `brief.results.md`; separate mounts do not share query state.
 
-`search.query` uses MemFS meaning-oriented hybrid search. `recall.query` uses normal trusted recall behavior and excludes stale, rejected, and superseded memory by default. `brief.query` creates a pre-task context pack without raw source content.
+`search.query` uses VeriFS meaning-oriented hybrid search. `recall.query` uses normal trusted recall behavior and excludes stale, rejected, and superseded memory by default. `brief.query` creates a pre-task context pack without raw source content.
 
 All three result files include source paths, trust levels, scores, memory node ids, raw refs, and a reminder that raw source must be opened explicitly.
 
@@ -43,7 +43,7 @@ Protected paths such as `/preferences.md` and `/projects/*/decisions.md` fail by
 
 ## Trust Behavior
 
-Trust is path-based in current MemFS core:
+Trust is path-based in current VeriFS core:
 
 - `/scratch/` produces ephemeral memory nodes.
 - `/runs/` produces agent-generated memory nodes.
@@ -66,4 +66,4 @@ Mounted workflows emit mount-specific audit events where the configured API/core
 - `mount.search.query`
 - `mount.brief.query`
 
-The underlying MemFS operation also emits its standard audit event, so a mounted write can show both `file_write` and `mount.file.write`.
+The underlying VeriFS operation also emits its standard audit event, so a mounted write can show both `file_write` and `mount.file.write`.

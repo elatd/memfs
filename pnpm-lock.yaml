@@ -11,13 +11,16 @@ importers:
 
   .:
     dependencies:
-      '@memoryfs/core':
+      '@verifs/core':
         specifier: workspace:*
         version: link:packages/core
     devDependencies:
       '@types/node':
         specifier: ^22.10.2
         version: 22.19.17
+      '@verifs/cli':
+        specifier: workspace:*
+        version: link:apps/cli
       concurrently:
         specifier: ^9.1.2
         version: 9.2.1
@@ -36,7 +39,7 @@ importers:
       '@fastify/cors':
         specifier: ^10.0.2
         version: 10.1.0
-      '@memoryfs/core':
+      '@verifs/core':
         specifier: workspace:*
         version: link:../../packages/core
       dotenv:
@@ -48,31 +51,31 @@ importers:
 
   apps/cli:
     dependencies:
-      '@memoryfs/core':
+      '@verifs/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@memoryfs/mountd':
+      '@verifs/mountd':
         specifier: workspace:*
         version: link:../mountd
-      '@memoryfs/sdk':
+      '@verifs/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
       tsx:
         specifier: ^4.19.2
         version: 4.21.0
     devDependencies:
-      '@memoryfs/api':
+      '@verifs/api':
         specifier: workspace:*
         version: link:../api
 
   apps/mcp:
     dependencies:
-      '@memoryfs/core':
-        specifier: workspace:*
-        version: link:../../packages/core
       '@modelcontextprotocol/sdk':
         specifier: ^1.5.0
         version: 1.29.0(zod@3.25.76)
+      '@verifs/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
@@ -82,10 +85,10 @@ importers:
 
   apps/mountd:
     dependencies:
-      '@memoryfs/mount-core':
+      '@verifs/mount-core':
         specifier: workspace:*
         version: link:../../packages/mount-core
-      '@memoryfs/sdk':
+      '@verifs/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
       tsx:
@@ -132,10 +135,10 @@ importers:
 
   packages/core:
     dependencies:
-      '@memoryfs/db':
+      '@verifs/db':
         specifier: workspace:*
         version: link:../db
-      '@memoryfs/memory':
+      '@verifs/memory':
         specifier: workspace:*
         version: link:../memory
 
@@ -176,22 +179,22 @@ importers:
 
   packages/mount-core:
     dependencies:
-      '@memoryfs/core':
+      '@verifs/core':
         specifier: workspace:*
         version: link:../core
-      '@memoryfs/sdk':
+      '@verifs/sdk':
         specifier: workspace:*
         version: link:../sdk
 
   packages/sdk:
     dependencies:
-      '@memoryfs/core':
+      '@verifs/core':
         specifier: workspace:*
         version: link:../core
 
   packages/virtual-bash:
     dependencies:
-      '@memoryfs/core':
+      '@verifs/core':
         specifier: workspace:*
         version: link:../core
 

@@ -1,6 +1,6 @@
 # Architecture
 
-MemFS has four layers:
+VeriFS has four layers:
 
 - `packages/core`: workspace, file, blob, audit, protected path, ingestion, and recall orchestration.
 - `packages/db`: SQLite connection, migrations, and metadata adapter interfaces.
@@ -11,7 +11,7 @@ MemFS has four layers:
 
 Data lives under `./data`:
 
-- `./data/memoryfs.db`: SQLite metadata.
+- `./data/verifs.db`: SQLite metadata.
 - `./data/blobs/<prefix>/<sha256>`: content-addressed source blobs.
 - `./data/workspaces/<workspace_id>`: local workspace files.
 
@@ -66,7 +66,7 @@ Memory curation flow:
 
 1. Agent runs, user events, files, and tool outputs are treated as source material.
 2. A curator model extracts structured candidate memories rather than letting the main task agent silently rewrite durable memory.
-3. MemFS validates candidates, checks source references, deduplicates, detects conflicts, and applies protected-path rules.
+3. VeriFS validates candidates, checks source references, deduplicates, detects conflicts, and applies protected-path rules.
 4. Risky, inferred, external, global, or conflicting candidates remain pending for review or optional verifier-model checks.
 5. Approved memory is written to workspace files, indexed for recall, and recorded in the audit log.
 
@@ -74,9 +74,9 @@ See [Memory Curation](./memory-curation.md) for model-size guidance, safety rule
 
 Agent UX surfaces:
 
-- CLI uses the local API and stores the selected workspace in `~/.memfs/config.json`.
+- CLI uses the local API and stores the selected workspace in `~/.verifs/config.json`.
 - Virtual bash calls `packages/core` directly and returns structured results with `displayText`.
-- MCP exposes the same workspace, file, memory, raw, and audit workflow through `memfs_*` tools.
+- MCP exposes the same workspace, file, memory, raw, and audit workflow through `verifs_*` tools.
 - Dashboard keeps raw source behind an explicit click.
 
 Graph flow:
@@ -109,7 +109,7 @@ Stale review flow:
 
 1. Stale memory is listed by criteria such as rejected, superseded, expired TTL, missing source, low confidence, and old low-importance nodes.
 2. Review marks candidates through `memory_reviews` and audit events.
-3. MemFS does not delete stale memory by default.
+3. VeriFS does not delete stale memory by default.
 
 Sync flow:
 
@@ -122,6 +122,6 @@ Sync flow:
 Team flow:
 
 1. Local mode is unauthenticated by default.
-2. Team/cloud mode can require actor identity through `Authorization: Bearer <actor>` or `x-memfs-actor`.
+2. Team/cloud mode can require actor identity through `Authorization: Bearer <actor>` or `x-verifs-actor`.
 3. Workspace members have owner, admin, editor, agent, or viewer roles.
 4. Agents can write `/scratch/` and `/runs/` and propose promotions, but cannot silently edit protected durable memory.

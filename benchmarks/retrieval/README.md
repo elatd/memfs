@@ -6,7 +6,7 @@ Run:
 pnpm benchmark:retrieval
 ```
 
-The benchmark creates a temporary local MemFS workspace and seeds a small fixture corpus:
+The benchmark creates a temporary local VeriFS workspace and seeds a small fixture corpus:
 
 - project facts
 - decisions

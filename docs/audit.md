@@ -1,6 +1,6 @@
 # Audit Events
 
-MemFS records audit events for workspace, file, memory, sync, trust, and mount activity.
+VeriFS records audit events for workspace, file, memory, sync, trust, and mount activity.
 
 Audit events are local metadata. They do not replace raw files as source of truth, but they make memory changes inspectable.
 
@@ -40,7 +40,7 @@ Body:
   "actor": "mount:local",
   "event_type": "mount.started",
   "payload": {
-    "mountpoint": "/Users/me/MemFS/demo"
+    "mountpoint": "/Users/me/VeriFS/demo"
   }
 }
 ```

@@ -1,5 +1,5 @@
-import { MemoryFS, normalizeMemoryPath, type AuditEvent, type BriefRequest, type BriefResponse, type FileRecord, type MemoryGrepOptions, type MemoryGrepResponse, type MemoryHealthReport, type RecallOptions, type RecallResponse, type Workspace } from "@memoryfs/core";
-import { MemoryFSClient, MemoryFSNotFoundError, type DeleteFilePacket, type FileReadPacket, type JsonObject } from "@memoryfs/sdk";
+import { VeriFS, normalizeMemoryPath, type AuditEvent, type BriefRequest, type BriefResponse, type FileRecord, type MemoryGrepOptions, type MemoryGrepResponse, type MemoryHealthReport, type RecallOptions, type RecallResponse, type Workspace } from "@verifs/core";
+import { VeriFSClient, VeriFSNotFoundError, type DeleteFilePacket, type FileReadPacket, type JsonObject } from "@verifs/sdk";
 import path from "node:path";
 
 export type MountMode = "read-only" | "read-write";
@@ -155,30 +155,30 @@ export interface MountCore {
 }
 
 export function createMountCore(options: MountCoreOptions): MountCore {
-  return new MemoryFsMountCore(options);
+  return new VeriFSMountCore(options);
 }
 
-export function createCoreMountClient(memoryfs: MemoryFS): MountClient {
+export function createCoreMountClient(verifs: VeriFS): MountClient {
   return {
-    getWorkspace: (workspaceId) => memoryfs.getWorkspace(workspaceId),
-    listFiles: (workspaceId) => memoryfs.listFiles(workspaceId),
-    readFile: (workspaceId, filePath, options) => memoryfs.readFile(workspaceId, filePath, options),
-    writeFile: (workspaceId, filePath, content, options) => memoryfs.writeFile(workspaceId, filePath, content, options),
+    getWorkspace: (workspaceId) => verifs.getWorkspace(workspaceId),
+    listFiles: (workspaceId) => verifs.listFiles(workspaceId),
+    readFile: (workspaceId, filePath, options) => verifs.readFile(workspaceId, filePath, options),
+    writeFile: (workspaceId, filePath, content, options) => verifs.writeFile(workspaceId, filePath, content, options),
     uploadFile: (workspaceId, filePath, bytes, options) =>
-      memoryfs.uploadFile(workspaceId, filePath, typeof bytes === "string" ? Buffer.from(bytes, "base64") : bytes, options),
-    deleteFile: (workspaceId, filePath, options) => memoryfs.deleteFile(workspaceId, filePath, options),
-    recallMemory: (workspaceId, query, options) => memoryfs.recallMemory(workspaceId, query, options),
-    searchMemory: (workspaceId, query, options) => memoryfs.searchMemory(workspaceId, query, options),
-    grepMemory: (workspaceId, query, options) => memoryfs.grepMemory(workspaceId, query, options),
-    createBrief: (workspaceId, request) => memoryfs.createBrief(workspaceId, request),
-    listAuditEvents: (workspaceId, limit) => memoryfs.listAuditEvents(workspaceId, limit),
-    getMemoryHealth: (workspaceId) => memoryfs.getMemoryHealth(workspaceId),
-    recordAuditEvent: (workspaceId, actor, eventType, payload) => memoryfs.recordAuditEvent(workspaceId, actor, eventType, payload)
+      verifs.uploadFile(workspaceId, filePath, typeof bytes === "string" ? Buffer.from(bytes, "base64") : bytes, options),
+    deleteFile: (workspaceId, filePath, options) => verifs.deleteFile(workspaceId, filePath, options),
+    recallMemory: (workspaceId, query, options) => verifs.recallMemory(workspaceId, query, options),
+    searchMemory: (workspaceId, query, options) => verifs.searchMemory(workspaceId, query, options),
+    grepMemory: (workspaceId, query, options) => verifs.grepMemory(workspaceId, query, options),
+    createBrief: (workspaceId, request) => verifs.createBrief(workspaceId, request),
+    listAuditEvents: (workspaceId, limit) => verifs.listAuditEvents(workspaceId, limit),
+    getMemoryHealth: (workspaceId) => verifs.getMemoryHealth(workspaceId),
+    recordAuditEvent: (workspaceId, actor, eventType, payload) => verifs.recordAuditEvent(workspaceId, actor, eventType, payload)
   };
 }
 
-export function createHttpMountClient(options: { baseUrl?: string; client?: MemoryFSClient }): MountClient {
-  const client = options.client ?? new MemoryFSClient(options.baseUrl);
+export function createHttpMountClient(options: { baseUrl?: string; client?: VeriFSClient }): MountClient {
+  const client = options.client ?? new VeriFSClient(options.baseUrl);
   return {
     getWorkspace: (workspaceId) => client.listWorkspaces().then((workspaces) => {
       const workspace = asArray<Workspace>(workspaces).find((entry) => entry.id === workspaceId);
@@ -206,7 +206,7 @@ export function createHttpMountClient(options: { baseUrl?: string; client?: Memo
   };
 }
 
-class MemoryFsMountCore implements MountCore {
+class VeriFSMountCore implements MountCore {
   private readonly client: MountClient;
   private readonly actor: string;
   private readonly mode: MountMode;
@@ -265,7 +265,7 @@ class MemoryFsMountCore implements MountCore {
 
     const entries = new Map<string, MountDirEntry>();
     if (dirPath === "/" && this.enableControlDir) {
-      entries.set(".memfs", { name: ".memfs", path: "/.memfs", type: "directory" });
+      entries.set(".verifs", { name: ".verifs", path: "/.verifs", type: "directory" });
     }
 
     for (const file of await this.files()) {
@@ -455,46 +455,46 @@ class MemoryFsMountCore implements MountCore {
   }
 
   private isControlPath(filePath: string): boolean {
-    return this.enableControlDir && (filePath === "/.memfs" || filePath.startsWith("/.memfs/"));
+    return this.enableControlDir && (filePath === "/.verifs" || filePath.startsWith("/.verifs/"));
   }
 
   private async statControlPath(filePath: string): Promise<MountStat> {
     const now = new Date();
-    if (filePath === "/.memfs") return statFor(filePath, "directory", 0, now);
+    if (filePath === "/.verifs") return statFor(filePath, "directory", 0, now);
     const content = await this.readControlPath(filePath);
     return statFor(filePath, "file", Buffer.byteLength(content), now);
   }
 
   private async listControlPath(filePath: string): Promise<MountDirEntry[]> {
-    if (filePath !== "/.memfs") throw new MountCoreError("ENOTDIR", `Not a control directory: ${filePath}`);
+    if (filePath !== "/.verifs") throw new MountCoreError("ENOTDIR", `Not a control directory: ${filePath}`);
     return controlFiles.map((name) => ({
       name,
-      path: `/.memfs/${name}`,
+      path: `/.verifs/${name}`,
       type: "file"
     }));
   }
 
   private async readControlPath(filePath: string): Promise<string> {
     switch (filePath) {
-      case "/.memfs/README.md":
+      case "/.verifs/README.md":
         return controlReadme;
-      case "/.memfs/status.json":
+      case "/.verifs/status.json":
         return `${JSON.stringify(await this.getStatus(), null, 2)}\n`;
-      case "/.memfs/recall.query":
+      case "/.verifs/recall.query":
         return this.control.recallQuery;
-      case "/.memfs/recall.results.md":
+      case "/.verifs/recall.results.md":
         return renderRecallResults("Recall results", this.control.recallResponse);
-      case "/.memfs/search.query":
+      case "/.verifs/search.query":
         return this.control.searchQuery;
-      case "/.memfs/search.results.md":
+      case "/.verifs/search.results.md":
         return renderSearchResults("Search results", this.control.searchResponse);
-      case "/.memfs/brief.query":
+      case "/.verifs/brief.query":
         return this.control.briefQuery;
-      case "/.memfs/brief.results.md":
+      case "/.verifs/brief.results.md":
         return renderBriefResults(this.control.briefResponse);
-      case "/.memfs/audit.md":
+      case "/.verifs/audit.md":
         return this.renderAudit();
-      case "/.memfs/health.md":
+      case "/.verifs/health.md":
         return this.renderHealth();
       default:
         throw new MountCoreError("ENOENT", `Unknown control file: ${filePath}`);
@@ -503,7 +503,7 @@ class MemoryFsMountCore implements MountCore {
 
   private async writeControlPath(filePath: string, bytes: Uint8Array): Promise<MountWriteResult> {
     const query = Buffer.from(bytes).toString("utf8").trim();
-    if (filePath === "/.memfs/recall.query") {
+    if (filePath === "/.verifs/recall.query") {
       if (!this.client.recallMemory) throw new MountCoreError("ENOTSUP", "Client does not support recall.");
       this.control.recallQuery = query;
       try {
@@ -522,7 +522,7 @@ class MemoryFsMountCore implements MountCore {
       this.control.recallUpdatedAt = new Date().toISOString();
       return { path: filePath, bytesWritten: bytes.byteLength };
     }
-    if (filePath === "/.memfs/search.query") {
+    if (filePath === "/.verifs/search.query") {
       if (!this.client.grepMemory && !this.client.searchMemory) throw new MountCoreError("ENOTSUP", "Client does not support memory search.");
       this.control.searchQuery = query;
       try {
@@ -545,7 +545,7 @@ class MemoryFsMountCore implements MountCore {
       this.control.searchUpdatedAt = new Date().toISOString();
       return { path: filePath, bytesWritten: bytes.byteLength };
     }
-    if (filePath === "/.memfs/brief.query") {
+    if (filePath === "/.verifs/brief.query") {
       if (!this.client.createBrief) throw new MountCoreError("ENOTSUP", "Client does not support briefs.");
       this.control.briefQuery = query;
       try {
@@ -653,7 +653,7 @@ class MemoryFsMountCore implements MountCore {
 
 export function normalizeMountPath(inputPath: string): string {
   if (/^[a-zA-Z]:[\\/]/.test(inputPath)) {
-    throw new MountCoreError("EINVAL", "Host drive paths are not valid MemFS mount paths.", undefined, "MOUNT_PATH_TRAVERSAL_REJECTED");
+    throw new MountCoreError("EINVAL", "Host drive paths are not valid VeriFS mount paths.", undefined, "MOUNT_PATH_TRAVERSAL_REJECTED");
   }
   const withSlash = inputPath.startsWith("/") ? inputPath : `/${inputPath}`;
   if (withSlash.includes("\0")) throw new MountCoreError("EINVAL", "Path cannot include null bytes.");
@@ -699,7 +699,7 @@ function isMissing(error: unknown): boolean {
 }
 
 function isNotFoundClientError(error: unknown): boolean {
-  return error instanceof MemoryFSNotFoundError ||
+  return error instanceof VeriFSNotFoundError ||
     (error instanceof Error && "statusCode" in error && error.statusCode === 404);
 }
 
@@ -811,25 +811,25 @@ const controlFiles = [
   "health.md"
 ];
 
-const controlReadme = `# MemFS Mount Control
+const controlReadme = `# VeriFS Mount Control
 
-This virtual directory is provided by the MemFS mount layer.
+This virtual directory is provided by the VeriFS mount layer.
 
 Examples:
 
 \`\`\`bash
-echo "What should I remember before changing onboarding?" > .memfs/recall.query
-cat .memfs/recall.results.md
+echo "What should I remember before changing onboarding?" > .verifs/recall.query
+cat .verifs/recall.results.md
 
-echo "onboarding decision" > .memfs/search.query
-cat .memfs/search.results.md
+echo "onboarding decision" > .verifs/search.query
+cat .verifs/search.results.md
 
-echo "Fix OAuth refresh token flow" > .memfs/brief.query
-cat .memfs/brief.results.md
+echo "Fix OAuth refresh token flow" > .verifs/brief.query
+cat .verifs/brief.results.md
 
-cat .memfs/status.json
-cat .memfs/audit.md
-cat .memfs/health.md
+cat .verifs/status.json
+cat .verifs/audit.md
+cat .verifs/health.md
 \`\`\`
 
 Files:
@@ -847,5 +847,5 @@ Files:
 Recall/search/brief results do not include raw source content by default. Read the source file or use explicit raw-source tools when needed.
 
 Control files do not create normal workspace files.
-.memfs is reserved and cannot be removed, renamed, or overwritten as normal memory.
+.verifs is reserved and cannot be removed, renamed, or overwritten as normal memory.
 `;

@@ -36,6 +36,6 @@ Example source locations:
 { "type": "terminal_log", "command": "pnpm test", "line_start": 100, "line_end": 160 }
 ```
 
-Raw content remains gated. Use `include_raw=true`, `memfs raw <node_id>`, or `memfs_memory_raw_read` only when the caller explicitly needs canonical source bytes rendered as text.
+Raw content remains gated. Use `include_raw=true`, `verifs raw <node_id>`, or `verifs_memory_raw_read` only when the caller explicitly needs canonical source bytes rendered as text.
 
 Memory nodes are never canonical truth. They are retrieval indexes with source references so humans and agents can inspect the original file before making durable decisions.

@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { MemFSAdapter } from "../adapters/memfs-adapter.js";
+import { VeriFSAdapter } from "../adapters/verifs-adapter.js";
 import { NoMemoryAdapter } from "../adapters/no-memory-adapter.js";
 import { runSmokeSuite } from "./smoke-suite.js";
 
@@ -7,8 +7,8 @@ const resultsJsonPath = fileURLToPath(new URL("../../results/smoke-results.json"
 const reportMarkdownPath = fileURLToPath(new URL("../../results/smoke-report.md", import.meta.url));
 
 const result = await runSmokeSuite({
-  benchmarkName: "memfs-smoke",
-  adapters: [new NoMemoryAdapter(), new MemFSAdapter()],
+  benchmarkName: "verifs-smoke",
+  adapters: [new NoMemoryAdapter(), new VeriFSAdapter()],
   resultsJsonPath,
   reportMarkdownPath
 });

@@ -1,4 +1,4 @@
-import { MemoryFS } from "@memoryfs/core";
+import { VeriFS } from "@verifs/core";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -6,37 +6,37 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCoreMountClient, createMountCore, type MountClient } from "./index.js";
 
 let tempDir: string;
-let memoryfs: MemoryFS;
+let verifs: VeriFS;
 let workspaceId: string;
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(path.join(tmpdir(), "memfs-mount-core-test-"));
-  memoryfs = new MemoryFS({
+  tempDir = await mkdtemp(path.join(tmpdir(), "verifs-mount-core-test-"));
+  verifs = new VeriFS({
     dataDir: tempDir,
     memory: { useLlm: false }
   });
-  await memoryfs.initialize();
-  workspaceId = memoryfs.createWorkspace("demo").id;
+  await verifs.initialize();
+  workspaceId = verifs.createWorkspace("demo").id;
 });
 
 afterEach(async () => {
-  memoryfs.close();
+  verifs.close();
   await rm(tempDir, { recursive: true, force: true });
 });
 
 describe("mount-core", () => {
   it("lists root with workspace files and the control directory", async () => {
-    await memoryfs.writeFile(workspaceId, "/runs/today/result.md", "hello", { ingest: false });
+    await verifs.writeFile(workspaceId, "/runs/today/result.md", "hello", { ingest: false });
     const mount = testMount("read-only");
 
     const entries = await mount.list("/");
 
     expect(entries.map((entry) => entry.name)).toContain("runs");
-    expect(entries.map((entry) => entry.name)).toContain(".memfs");
+    expect(entries.map((entry) => entry.name)).toContain(".verifs");
   });
 
   it("reads workspace files as bytes", async () => {
-    await memoryfs.writeFile(workspaceId, "/runs/today/result.md", "hello", { ingest: false });
+    await verifs.writeFile(workspaceId, "/runs/today/result.md", "hello", { ingest: false });
     const mount = testMount("read-only");
 
     const content = Buffer.from(await mount.read("/runs/today/result.md")).toString("utf8");
@@ -50,9 +50,9 @@ describe("mount-core", () => {
     await mount.write("/runs/today/result.md", Buffer.from("hello"));
     await mount.write("/runs/today/result.md", Buffer.from("changed"));
 
-    const read = await memoryfs.readFile(workspaceId, "/runs/today/result.md");
+    const read = await verifs.readFile(workspaceId, "/runs/today/result.md");
     expect(read.content).toBe("changed");
-    expect(memoryfs.listAuditEvents(workspaceId).some((event) => event.event_type === "mount.file.write")).toBe(true);
+    expect(verifs.listAuditEvents(workspaceId).some((event) => event.event_type === "mount.file.write")).toBe(true);
   });
 
   it("appends file content", async () => {
@@ -61,18 +61,18 @@ describe("mount-core", () => {
     await mount.write("/runs/today/result.md", Buffer.from("hello"));
     await mount.append("/runs/today/result.md", Buffer.from("\nagain"));
 
-    const read = await memoryfs.readFile(workspaceId, "/runs/today/result.md");
+    const read = await verifs.readFile(workspaceId, "/runs/today/result.md");
     expect(read.content).toBe("hello\nagain");
   });
 
   it("deletes files through core", async () => {
-    await memoryfs.writeFile(workspaceId, "/runs/today/result.md", "hello", { ingest: false });
+    await verifs.writeFile(workspaceId, "/runs/today/result.md", "hello", { ingest: false });
     const mount = testMount("read-write");
 
     await mount.unlink("/runs/today/result.md");
 
-    await expect(memoryfs.readFile(workspaceId, "/runs/today/result.md")).rejects.toThrow();
-    expect(memoryfs.listAuditEvents(workspaceId).some((event) => event.event_type === "mount.file.delete")).toBe(true);
+    await expect(verifs.readFile(workspaceId, "/runs/today/result.md")).rejects.toThrow();
+    expect(verifs.listAuditEvents(workspaceId).some((event) => event.event_type === "mount.file.delete")).toBe(true);
   });
 
   it("tracks transient directories and removes empty ones", async () => {
@@ -86,24 +86,24 @@ describe("mount-core", () => {
   });
 
   it("renames files as write then delete", async () => {
-    await memoryfs.writeFile(workspaceId, "/runs/today/result.md", "hello", { ingest: false });
+    await verifs.writeFile(workspaceId, "/runs/today/result.md", "hello", { ingest: false });
     const mount = testMount("read-write");
 
     await mount.rename("/runs/today/result.md", "/runs/today/final.md");
 
-    expect((await memoryfs.readFile(workspaceId, "/runs/today/final.md")).content).toBe("hello");
-    await expect(memoryfs.readFile(workspaceId, "/runs/today/result.md")).rejects.toThrow();
+    expect((await verifs.readFile(workspaceId, "/runs/today/final.md")).content).toBe("hello");
+    await expect(verifs.readFile(workspaceId, "/runs/today/result.md")).rejects.toThrow();
   });
 
   it("truncates files", async () => {
-    await memoryfs.writeFile(workspaceId, "/runs/today/result.md", "hello", { ingest: false });
+    await verifs.writeFile(workspaceId, "/runs/today/result.md", "hello", { ingest: false });
     const mount = testMount("read-write");
 
     await mount.truncate("/runs/today/result.md", 2);
-    expect((await memoryfs.readFile(workspaceId, "/runs/today/result.md")).content).toBe("he");
+    expect((await verifs.readFile(workspaceId, "/runs/today/result.md")).content).toBe("he");
 
     await mount.truncate("/runs/today/result.md", 0);
-    expect((await memoryfs.readFile(workspaceId, "/runs/today/result.md")).content).toBe("");
+    expect((await verifs.readFile(workspaceId, "/runs/today/result.md")).content).toBe("");
   });
 
   it("rejects writes on a read-only mount", async () => {
@@ -124,40 +124,40 @@ describe("mount-core", () => {
       message: "Protected path denied. Re-run mount with --allow-protected-write or write to /runs/ and promote later."
     });
 
-    expect(memoryfs.listAuditEvents(workspaceId).some((event) => event.event_type === "protected_write_denied")).toBe(true);
-    expect(memoryfs.listAuditEvents(workspaceId).some((event) => event.event_type === "mount.protected_write.denied")).toBe(true);
+    expect(verifs.listAuditEvents(workspaceId).some((event) => event.event_type === "protected_write_denied")).toBe(true);
+    expect(verifs.listAuditEvents(workspaceId).some((event) => event.event_type === "mount.protected_write.denied")).toBe(true);
   });
 
   it("allows protected writes when explicitly configured", async () => {
     const mount = createMountCore({
       workspaceId,
-      coreClient: createCoreMountClient(memoryfs),
+      coreClient: createCoreMountClient(verifs),
       mode: "read-write",
       allowProtectedWrite: true
     });
 
     await mount.write("/preferences.md", Buffer.from("protected"));
 
-    expect((await memoryfs.readFile(workspaceId, "/preferences.md")).content).toBe("protected");
+    expect((await verifs.readFile(workspaceId, "/preferences.md")).content).toBe("protected");
   });
 
   it("rejects reserved control path writes except query files", async () => {
     const mount = testMount("read-write");
 
-    await expect(mount.write("/.memfs/status.json", Buffer.from("{}"))).rejects.toMatchObject({
+    await expect(mount.write("/.verifs/status.json", Buffer.from("{}"))).rejects.toMatchObject({
       code: "RESERVED_PATH",
       mountCode: "MOUNT_RESERVED_NAMESPACE"
     });
   });
 
   it("runs recall and search through control query files", async () => {
-    await memoryfs.writeFile(workspaceId, "/runs/today/result.md", "Decision: Mounted writes should stay auditable.", {
+    await verifs.writeFile(workspaceId, "/runs/today/result.md", "Decision: Mounted writes should stay auditable.", {
       ingest: true
     });
     const mount = testMount("read-write");
 
-    await mount.write("/.memfs/recall.query", Buffer.from("mounted writes"));
-    const recall = Buffer.from(await mount.read("/.memfs/recall.results.md")).toString("utf8");
+    await mount.write("/.verifs/recall.query", Buffer.from("mounted writes"));
+    const recall = Buffer.from(await mount.read("/.verifs/recall.results.md")).toString("utf8");
     expect(recall).toContain("source_path: /runs/today/result.md");
     expect(recall).toContain("trust:");
     expect(recall).toContain("node_id:");
@@ -165,34 +165,34 @@ describe("mount-core", () => {
     expect(recall).toContain("Raw source content is not returned here");
     expect(recall).toContain("tags:");
 
-    await mount.write("/.memfs/search.query", Buffer.from("auditable"));
-    const search = Buffer.from(await mount.read("/.memfs/search.results.md")).toString("utf8");
+    await mount.write("/.verifs/search.query", Buffer.from("auditable"));
+    const search = Buffer.from(await mount.read("/.verifs/search.results.md")).toString("utf8");
     expect(search).toContain("source_path: /runs/today/result.md");
     expect(search).toContain("trust:");
     expect(search).toContain("node_id:");
     expect(search).toContain("raw_ref:");
     expect(search).toContain("Raw source content is not returned here");
-    const status = JSON.parse(Buffer.from(await mount.read("/.memfs/status.json")).toString("utf8")) as {
+    const status = JSON.parse(Buffer.from(await mount.read("/.verifs/status.json")).toString("utf8")) as {
       lastRecallAt: string | null;
       lastSearchAt: string | null;
     };
     expect(status.lastRecallAt).toBeTruthy();
     expect(status.lastSearchAt).toBeTruthy();
-    const auditEvents = memoryfs.listAuditEvents(workspaceId);
+    const auditEvents = verifs.listAuditEvents(workspaceId);
     expect(auditEvents.some((event) => event.event_type === "mount.recall.query")).toBe(true);
     expect(auditEvents.some((event) => event.event_type === "mount.search.query")).toBe(true);
   });
 
   it("runs pre-task briefs through control query files", async () => {
-    await memoryfs.writeFile(workspaceId, "/projects/auth/decisions.md", "Decision: Mounted briefs should remember OAuth refresh tokens stay server-side.", {
+    await verifs.writeFile(workspaceId, "/projects/auth/decisions.md", "Decision: Mounted briefs should remember OAuth refresh tokens stay server-side.", {
       ingest: true,
       allow_protected_write: true
     });
     const mount = testMount("read-write");
 
-    await mount.write("/.memfs/brief.query", Buffer.from("Fix OAuth refresh token flow"));
-    const brief = Buffer.from(await mount.read("/.memfs/brief.results.md")).toString("utf8");
-    const status = JSON.parse(Buffer.from(await mount.read("/.memfs/status.json")).toString("utf8")) as {
+    await mount.write("/.verifs/brief.query", Buffer.from("Fix OAuth refresh token flow"));
+    const brief = Buffer.from(await mount.read("/.verifs/brief.results.md")).toString("utf8");
+    const status = JSON.parse(Buffer.from(await mount.read("/.verifs/status.json")).toString("utf8")) as {
       lastBriefQuery: string | null;
       lastBriefAt: string | null;
     };
@@ -206,20 +206,20 @@ describe("mount-core", () => {
     expect(brief).toContain("Raw source content is not returned here");
     expect(status.lastBriefQuery).toBe("Fix OAuth refresh token flow");
     expect(status.lastBriefAt).toBeTruthy();
-    expect(memoryfs.listAuditEvents(workspaceId).some((event) => event.event_type === "mount.brief.query")).toBe(true);
+    expect(verifs.listAuditEvents(workspaceId).some((event) => event.event_type === "mount.brief.query")).toBe(true);
   });
 
   it("keeps recall query results scoped to one mount session", async () => {
-    await memoryfs.writeFile(workspaceId, "/runs/today/result.md", "Decision: Scoped mount query state matters.", {
+    await verifs.writeFile(workspaceId, "/runs/today/result.md", "Decision: Scoped mount query state matters.", {
       ingest: true
     });
     const first = testMount("read-write");
     const second = testMount("read-write");
 
-    await first.write("/.memfs/recall.query", Buffer.from("scoped query"));
+    await first.write("/.verifs/recall.query", Buffer.from("scoped query"));
 
-    expect(Buffer.from(await first.read("/.memfs/recall.results.md")).toString("utf8")).toContain("source_path:");
-    expect(Buffer.from(await second.read("/.memfs/recall.results.md")).toString("utf8")).toContain("No query has been run.");
+    expect(Buffer.from(await first.read("/.verifs/recall.results.md")).toString("utf8")).toContain("source_path:");
+    expect(Buffer.from(await second.read("/.verifs/recall.results.md")).toString("utf8")).toContain("No query has been run.");
   });
 
   it("does not render raw content in recall results", async () => {
@@ -242,7 +242,7 @@ describe("mount-core", () => {
               scope: "workspace",
               score: 0.99,
               source_path: "/runs/test/result.md",
-              raw_ref: "memoryfs://workspace/runs/test/result.md#blob",
+              raw_ref: "verifs://workspace/runs/test/result.md#blob",
               raw_content: "SECRET_RAW_CONTENT"
             }
           ]
@@ -250,8 +250,8 @@ describe("mount-core", () => {
       })
     });
 
-    await mount.write("/.memfs/recall.query", Buffer.from("secret"));
-    const results = Buffer.from(await mount.read("/.memfs/recall.results.md")).toString("utf8");
+    await mount.write("/.verifs/recall.query", Buffer.from("secret"));
+    const results = Buffer.from(await mount.read("/.verifs/recall.results.md")).toString("utf8");
 
     expect(results).toContain("source_path: /runs/test/result.md");
     expect(results).toContain("raw_ref:");
@@ -262,7 +262,7 @@ describe("mount-core", () => {
   it("renders control files and status metadata", async () => {
     const mount = createMountCore({
       workspaceId,
-      coreClient: createCoreMountClient(memoryfs),
+      coreClient: createCoreMountClient(verifs),
       mode: "read-write",
       actor: "mount:test",
       apiUrl: "http://localhost:3131",
@@ -270,7 +270,7 @@ describe("mount-core", () => {
       allowProtectedWrite: true
     });
 
-    const controlEntries = await mount.list("/.memfs");
+    const controlEntries = await mount.list("/.verifs");
     expect(controlEntries.map((entry) => entry.name)).toEqual([
       "README.md",
       "status.json",
@@ -283,10 +283,10 @@ describe("mount-core", () => {
       "audit.md",
       "health.md"
     ]);
-    const readme = Buffer.from(await mount.read("/.memfs/README.md")).toString("utf8");
+    const readme = Buffer.from(await mount.read("/.verifs/README.md")).toString("utf8");
     expect(readme).toContain("echo \"What should I remember");
     expect(readme).toContain("brief.query");
-    const status = JSON.parse(Buffer.from(await mount.read("/.memfs/status.json")).toString("utf8")) as {
+    const status = JSON.parse(Buffer.from(await mount.read("/.verifs/status.json")).toString("utf8")) as {
       workspaceId: string;
       workspaceName: string;
       mountedAt: string;
@@ -307,12 +307,12 @@ describe("mount-core", () => {
   it("fails rm and rename operations involving the reserved namespace", async () => {
     const mount = testMount("read-write");
 
-    await expect(mount.unlink("/.memfs/status.json")).rejects.toMatchObject({ mountCode: "MOUNT_RESERVED_NAMESPACE" });
-    await expect(mount.rmdir("/.memfs")).rejects.toMatchObject({ mountCode: "MOUNT_RESERVED_NAMESPACE" });
-    await expect(mount.rename("/runs/today/result.md", "/.memfs/result.md")).rejects.toMatchObject({
+    await expect(mount.unlink("/.verifs/status.json")).rejects.toMatchObject({ mountCode: "MOUNT_RESERVED_NAMESPACE" });
+    await expect(mount.rmdir("/.verifs")).rejects.toMatchObject({ mountCode: "MOUNT_RESERVED_NAMESPACE" });
+    await expect(mount.rename("/runs/today/result.md", "/.verifs/result.md")).rejects.toMatchObject({
       mountCode: "MOUNT_RESERVED_NAMESPACE"
     });
-    await expect(mount.rename("/.memfs/README.md", "/runs/today/readme.md")).rejects.toMatchObject({
+    await expect(mount.rename("/.verifs/README.md", "/runs/today/readme.md")).rejects.toMatchObject({
       mountCode: "MOUNT_RESERVED_NAMESPACE"
     });
   });
@@ -324,24 +324,24 @@ describe("mount-core", () => {
       client: fakeControlClient({})
     });
 
-    expect(Buffer.from(await mount.read("/.memfs/audit.md")).toString("utf8")).toContain("Audit events are not supported");
-    expect(Buffer.from(await mount.read("/.memfs/health.md")).toString("utf8")).toContain("Memory health is not supported");
+    expect(Buffer.from(await mount.read("/.verifs/audit.md")).toString("utf8")).toContain("Audit events are not supported");
+    expect(Buffer.from(await mount.read("/.verifs/health.md")).toString("utf8")).toContain("Memory health is not supported");
   });
 
   it("ingests mounted writes only when ingestOnWrite is enabled", async () => {
     const noIngest = testMount("read-write");
     await noIngest.write("/runs/no-ingest/result.md", Buffer.from("Decision: This should not create memory."));
-    expect(memoryfs.listMemoryNodes(workspaceId).filter((node) => node.source_path === "/runs/no-ingest/result.md")).toHaveLength(0);
+    expect(verifs.listMemoryNodes(workspaceId).filter((node) => node.source_path === "/runs/no-ingest/result.md")).toHaveLength(0);
 
     const ingest = createMountCore({
       workspaceId,
-      coreClient: createCoreMountClient(memoryfs),
+      coreClient: createCoreMountClient(verifs),
       mode: "read-write",
       actor: "mount:test",
       ingestOnWrite: true
     });
     await ingest.write("/runs/ingest/result.md", Buffer.from("Decision: Mounted ingestion should create agent memory."));
-    const nodes = memoryfs.listMemoryNodes(workspaceId).filter((node) => node.source_path === "/runs/ingest/result.md");
+    const nodes = verifs.listMemoryNodes(workspaceId).filter((node) => node.source_path === "/runs/ingest/result.md");
     expect(nodes.length).toBeGreaterThan(0);
     expect(nodes[0]?.trust_level).toBe("agent_generated");
   });
@@ -349,7 +349,7 @@ describe("mount-core", () => {
   it("reads status json and rejects path traversal", async () => {
     const mount = testMount("read-only");
 
-    const status = JSON.parse(Buffer.from(await mount.read("/.memfs/status.json")).toString("utf8")) as {
+    const status = JSON.parse(Buffer.from(await mount.read("/.verifs/status.json")).toString("utf8")) as {
       workspaceId: string;
       mode: string;
     };
@@ -365,7 +365,7 @@ describe("mount-core", () => {
 function testMount(mode: "read-only" | "read-write") {
   return createMountCore({
     workspaceId,
-    coreClient: createCoreMountClient(memoryfs),
+    coreClient: createCoreMountClient(verifs),
     mode,
     actor: "mount:test"
   });

@@ -1,6 +1,6 @@
 # Explainable Recall
 
-MemFS recall is planned before retrieval. The planner is deterministic and works without an LLM.
+VeriFS recall is planned before retrieval. The planner is deterministic and works without an LLM.
 
 Planner input:
 

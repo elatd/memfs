@@ -8,8 +8,8 @@ let tempDir: string;
 let app: Awaited<ReturnType<typeof buildServer>>;
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(path.join(tmpdir(), "memfs-api-test-"));
-  process.env.MEMORYFS_DATA_DIR = tempDir;
+  tempDir = await mkdtemp(path.join(tmpdir(), "verifs-api-test-"));
+  process.env.VERIFS_DATA_DIR = tempDir;
   process.env.OPENAI_API_KEY = "";
   app = await buildServer();
 });
@@ -17,11 +17,11 @@ beforeEach(async () => {
 afterEach(async () => {
   await app.close();
   await rm(tempDir, { recursive: true, force: true });
-  delete process.env.MEMORYFS_DATA_DIR;
-  delete process.env.MEMFS_DATA_DIR;
-  delete process.env.MEMFS_MODE;
-  delete process.env.MEMFS_AUTH_REQUIRED;
-  delete process.env.MEMFS_SYNC_ENABLED;
+  delete process.env.VERIFS_DATA_DIR;
+  delete process.env.VERIFS_DATA_DIR;
+  delete process.env.VERIFS_MODE;
+  delete process.env.VERIFS_AUTH_REQUIRED;
+  delete process.env.VERIFS_SYNC_ENABLED;
 });
 
 describe("recall graph API", () => {
@@ -341,7 +341,7 @@ describe("recall graph API", () => {
 
   it("requires actor authentication when auth is enabled", async () => {
     await app.close();
-    process.env.MEMFS_AUTH_REQUIRED = "true";
+    process.env.VERIFS_AUTH_REQUIRED = "true";
     app = await buildServer();
 
     const unauthenticated = await app.inject({

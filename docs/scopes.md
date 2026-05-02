@@ -1,6 +1,6 @@
 # Memory Scopes
 
-MemFS memory nodes carry an explicit `scope` so recall can distinguish broad workspace memory from project, run, repo, session, agent, or contact-specific context.
+VeriFS memory nodes carry an explicit `scope` so recall can distinguish broad workspace memory from project, run, repo, session, agent, or contact-specific context.
 
 Supported scopes:
 
@@ -13,7 +13,7 @@ Supported scopes:
 - `contact`
 - `run`
 
-Most callers do not need to set a scope. MemFS infers one from source paths:
+Most callers do not need to set a scope. VeriFS infers one from source paths:
 
 - `/profile.md`, `/preferences.md`, `/archive/...`, and ordinary memory files -> `workspace`
 - `/projects/<slug>/...` -> `project`, with `project_slug`
@@ -26,9 +26,9 @@ Most callers do not need to set a scope. MemFS infers one from source paths:
 Examples:
 
 ```bash
-memfs grep "OAuth refresh tokens" --scope project --project pipsqueak
-memfs recall "deployment constraints" --scope workspace
-memfs node list --scope run
+verifs grep "OAuth refresh tokens" --scope project --project pipsqueak
+verifs recall "deployment constraints" --scope workspace
+verifs node list --scope run
 ```
 
 MCP tools accept the same optional filters on grep, search, and recall: `scope`, `project_slug`, `repo_path`, `session_id`, `agent_id`, `contact_id`, and `run_id`.

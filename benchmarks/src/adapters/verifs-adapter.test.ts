@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sourcePathFor } from "./memfs-adapter.js";
+import { sourcePathFor } from "./verifs-adapter.js";
 
 describe("sourcePathFor", () => {
   it("keeps sanitized source id collisions distinct", () => {

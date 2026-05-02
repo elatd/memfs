@@ -7,14 +7,14 @@ Manual smoke test:
 1. Start the API and web app:
 
 ```bash
-pnpm --filter @memoryfs/api dev
-pnpm --filter @memoryfs/web dev
+pnpm --filter @verifs/api dev
+pnpm --filter @verifs/web dev
 ```
 
 2. Open the web dashboard, choose or create a workspace, and create a candidate through the API or CLI:
 
 ```bash
-pnpm exec memfs candidates
+pnpm exec verifs candidates
 ```
 
 3. In the dashboard, open **Memory > Review**.

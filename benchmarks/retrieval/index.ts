@@ -1,11 +1,11 @@
 import {
-  MemoryFS,
+  VeriFS,
   type BriefResponse,
   type MemoryGrepResult,
   type MemoryNode,
   type MemoryTrustLevel,
   type RecallResult
-} from "@memoryfs/core";
+} from "@verifs/core";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -44,8 +44,8 @@ interface QueryMetrics {
 
 async function main(): Promise<void> {
   process.env.OPENAI_API_KEY = "";
-  const dataDir = await mkdtemp(path.join(tmpdir(), "memfs-retrieval-benchmark-"));
-  const memoryfs = new MemoryFS({
+  const dataDir = await mkdtemp(path.join(tmpdir(), "verifs-retrieval-benchmark-"));
+  const verifs = new VeriFS({
     dataDir,
     memory: {
       useLlm: false
@@ -53,13 +53,13 @@ async function main(): Promise<void> {
   });
 
   try {
-    await memoryfs.initialize();
-    const workspace = memoryfs.createWorkspace("retrieval-benchmark");
-    const index = await seedFixture(memoryfs, workspace.id);
+    await verifs.initialize();
+    const workspace = verifs.createWorkspace("retrieval-benchmark");
+    const index = await seedFixture(verifs, workspace.id);
     const metrics: QueryMetrics[] = [];
 
     for (const query of benchmarkQueries) {
-      const results = await retrieve(memoryfs, workspace.id, query);
+      const results = await retrieve(verifs, workspace.id, query);
       metrics.push(scoreQuery(query, results, index));
     }
 
@@ -68,46 +68,46 @@ async function main(): Promise<void> {
       process.exitCode = 1;
     }
   } finally {
-    memoryfs.close();
+    verifs.close();
     await rm(dataDir, { recursive: true, force: true });
   }
 }
 
-async function seedFixture(memoryfs: MemoryFS, workspaceId: string): Promise<SeedIndex> {
+async function seedFixture(verifs: VeriFS, workspaceId: string): Promise<SeedIndex> {
   const index: SeedIndex = new Map();
 
   for (const file of fixtureFiles) {
-    await memoryfs.writeFile(workspaceId, file.path, file.content, {
+    await verifs.writeFile(workspaceId, file.path, file.content, {
       actor: "benchmark:seed",
       ingest: true,
       allow_protected_write: Boolean(file.allowProtected)
     });
-    const node = latestNodeForPath(memoryfs, workspaceId, file.path);
+    const node = latestNodeForPath(verifs, workspaceId, file.path);
     index.set(file.label, { path: file.path, nodeId: node?.id });
     if (file.stale && node) {
-      memoryfs.markMemoryStale(workspaceId, node.id, {
+      verifs.markMemoryStale(workspaceId, node.id, {
         actor: "benchmark:seed",
         reason: file.stale
       });
     }
   }
 
-  const oldAuthNode = nodeForLabel(memoryfs, workspaceId, index, "oldAuthDecision");
-  const currentAuthNode = nodeForLabel(memoryfs, workspaceId, index, "authDecision");
+  const oldAuthNode = nodeForLabel(verifs, workspaceId, index, "oldAuthDecision");
+  const currentAuthNode = nodeForLabel(verifs, workspaceId, index, "authDecision");
   if (oldAuthNode && currentAuthNode) {
-    memoryfs.supersedeMemory(workspaceId, oldAuthNode.id, currentAuthNode.id, {
+    verifs.supersedeMemory(workspaceId, oldAuthNode.id, currentAuthNode.id, {
       actor: "benchmark:seed",
       reason: "Server-side refresh token storage replaced the alpha localStorage decision."
     });
   }
 
   for (const runFixture of fixtureRuns) {
-    const run = await memoryfs.createRun(workspaceId, {
+    const run = await verifs.createRun(workspaceId, {
       task: runFixture.task,
       title: runFixture.title,
       actor: "benchmark:run"
     });
-    await memoryfs.completeRun(workspaceId, run.id, {
+    await verifs.completeRun(workspaceId, run.id, {
       result: runFixture.result,
       errors: runFixture.errors,
       followups: runFixture.followups,
@@ -115,13 +115,13 @@ async function seedFixture(memoryfs: MemoryFS, workspaceId: string): Promise<See
       failed: Boolean(runFixture.errors && /failed|error/i.test(runFixture.errors))
     });
     if (runFixture.compileReasoning) {
-      await memoryfs.compileRun(workspaceId, run.id, {
+      await verifs.compileRun(workspaceId, run.id, {
         actor: "benchmark:run",
         reasoning: true
       });
     }
     if (runFixture.handoffProject) {
-      const handoff = await memoryfs.createHandoff(workspaceId, {
+      const handoff = await verifs.createHandoff(workspaceId, {
         run_id: run.id,
         project_hint: runFixture.handoffProject,
         actor: "benchmark:run"
@@ -130,26 +130,26 @@ async function seedFixture(memoryfs: MemoryFS, workspaceId: string): Promise<See
     }
 
     if (runFixture.label === "supabase") {
-      index.set("supabaseRunError", { path: `${run.run_path}/errors.md`, nodeId: latestNodeForPath(memoryfs, workspaceId, `${run.run_path}/errors.md`)?.id });
+      index.set("supabaseRunError", { path: `${run.run_path}/errors.md`, nodeId: latestNodeForPath(verifs, workspaceId, `${run.run_path}/errors.md`)?.id });
     }
     if (runFixture.label === "largeUpload") {
-      index.set("largeUploadRunError", { path: `${run.run_path}/errors.md`, nodeId: latestNodeForPath(memoryfs, workspaceId, `${run.run_path}/errors.md`)?.id });
+      index.set("largeUploadRunError", { path: `${run.run_path}/errors.md`, nodeId: latestNodeForPath(verifs, workspaceId, `${run.run_path}/errors.md`)?.id });
       index.set("largeUploadCandidate", {
         path: `${run.run_path}/candidates.md`,
-        nodeId: latestNodeForPath(memoryfs, workspaceId, `${run.run_path}/candidates.md`)?.id
+        nodeId: latestNodeForPath(verifs, workspaceId, `${run.run_path}/candidates.md`)?.id
       });
       index.set("largeUploadReasoning", {
         path: `${run.run_path}/reasoning-memories.json`,
-        nodeId: latestNodeForPath(memoryfs, workspaceId, `${run.run_path}/reasoning-memories.json`)?.id
+        nodeId: latestNodeForPath(verifs, workspaceId, `${run.run_path}/reasoning-memories.json`)?.id
       });
     }
     if (runFixture.label === "onboarding") {
-      index.set("onboardingFailure", { path: `${run.run_path}/errors.md`, nodeId: latestNodeForPath(memoryfs, workspaceId, `${run.run_path}/errors.md`)?.id });
+      index.set("onboardingFailure", { path: `${run.run_path}/errors.md`, nodeId: latestNodeForPath(verifs, workspaceId, `${run.run_path}/errors.md`)?.id });
     }
   }
 
   for (const archive of fixtureArchives) {
-    const entry = await memoryfs.archive.importText(workspaceId, {
+    const entry = await verifs.archive.importText(workspaceId, {
       archive_type: archive.archive_type,
       title: archive.title,
       content: archive.content,
@@ -161,9 +161,9 @@ async function seedFixture(memoryfs: MemoryFS, workspaceId: string): Promise<See
   return index;
 }
 
-async function retrieve(memoryfs: MemoryFS, workspaceId: string, query: BenchmarkQuery): Promise<BenchmarkResultItem[]> {
+async function retrieve(verifs: VeriFS, workspaceId: string, query: BenchmarkQuery): Promise<BenchmarkResultItem[]> {
   if (query.mode === "brief") {
-    const brief = await memoryfs.createBrief(workspaceId, {
+    const brief = await verifs.createBrief(workspaceId, {
       task: query.query,
       project_slug: query.projectSlug,
       project_hint: query.projectSlug,
@@ -175,7 +175,7 @@ async function retrieve(memoryfs: MemoryFS, workspaceId: string, query: Benchmar
     return briefResults(brief);
   }
 
-  const grep = await memoryfs.grepMemory(workspaceId, query.query, {
+  const grep = await verifs.grepMemory(workspaceId, query.query, {
     mode: "hybrid",
     project_slug: query.projectSlug,
     project_hint: query.projectSlug,
@@ -240,13 +240,13 @@ function fromGrepResult(result: MemoryGrepResult): BenchmarkResultItem {
   };
 }
 
-function latestNodeForPath(memoryfs: MemoryFS, workspaceId: string, sourcePath: string): MemoryNode | null {
-  return memoryfs.listMemoryNodes(workspaceId).find((node) => node.source_path === sourcePath) ?? null;
+function latestNodeForPath(verifs: VeriFS, workspaceId: string, sourcePath: string): MemoryNode | null {
+  return verifs.listMemoryNodes(workspaceId).find((node) => node.source_path === sourcePath) ?? null;
 }
 
-function nodeForLabel(memoryfs: MemoryFS, workspaceId: string, index: SeedIndex, label: FixtureLabel): MemoryNode | null {
+function nodeForLabel(verifs: VeriFS, workspaceId: string, index: SeedIndex, label: FixtureLabel): MemoryNode | null {
   const nodeId = index.get(label)?.nodeId;
-  return nodeId ? memoryfs.getMemoryNode(workspaceId, nodeId) : null;
+  return nodeId ? verifs.getMemoryNode(workspaceId, nodeId) : null;
 }
 
 function resolveExpected(labels: FixtureLabel[], index: SeedIndex): Array<{ path?: string; nodeId?: string }> {
@@ -281,7 +281,7 @@ function trustRank(trust: MemoryTrustLevel | null): number {
 }
 
 function printReport(metrics: QueryMetrics[]): void {
-  console.log("MemFS retrieval benchmark");
+  console.log("VeriFS retrieval benchmark");
   console.log("Dataset: project facts, decisions, constraints, runs, handoffs, reasoning memories, stale/superseded memory, archive transcripts");
   console.log("");
   const rows = [

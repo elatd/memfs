@@ -5,7 +5,7 @@ describe("storage adapters", () => {
   it("ObjectBlobStore writes and reads blobs through a mocked S3-compatible client", async () => {
     const objects = new Map<string, Uint8Array>();
     const store = new ObjectBlobStore({
-      bucket: "memfs-test",
+      bucket: "verifs-test",
       prefix: "workspace-a",
       client: {
         async putObject(input) {

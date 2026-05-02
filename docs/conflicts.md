@@ -1,6 +1,6 @@
 # Candidate Deduplication and Conflicts
 
-MemFS checks memory candidates before they become durable memory. The goal is to let agents propose freely while preventing repeated or contradictory memories from entering trusted recall without review.
+VeriFS checks memory candidates before they become durable memory. The goal is to let agents propose freely while preventing repeated or contradictory memories from entering trusted recall without review.
 
 ## Duplicate Detection
 
@@ -56,22 +56,22 @@ Audit events:
 List duplicates:
 
 ```bash
-memfs candidates --duplicates
+verifs candidates --duplicates
 ```
 
 List conflicts:
 
 ```bash
-memfs candidates --conflicts
+verifs candidates --conflicts
 ```
 
 Resolve a conflict:
 
 ```bash
-memfs candidate resolve-conflict <id> --mode keep_new
-memfs candidate resolve-conflict <id> --mode keep_old
-memfs candidate resolve-conflict <id> --mode keep_both
-memfs candidate resolve-conflict <id> --mode mark_superseded
+verifs candidate resolve-conflict <id> --mode keep_new
+verifs candidate resolve-conflict <id> --mode keep_old
+verifs candidate resolve-conflict <id> --mode keep_both
+verifs candidate resolve-conflict <id> --mode mark_superseded
 ```
 
 Resolution modes:
@@ -83,4 +83,4 @@ Resolution modes:
 
 ## Review Rule
 
-MemFS does not silently approve duplicates or conflicts. Durable memory still flows through promotion, review, audit events, source references, snapshots, and rollback.
+VeriFS does not silently approve duplicates or conflicts. Durable memory still flows through promotion, review, audit events, source references, snapshots, and rollback.

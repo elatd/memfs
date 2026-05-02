@@ -98,7 +98,7 @@ Normal recall excludes rejected, pending/candidate-like, stale, conflicted, and 
 
 ## Agent Runs
 
-Runs are ordinary MemFS files plus database metadata. Each run gets:
+Runs are ordinary VeriFS files plus database metadata. Each run gets:
 
 - `prompt.md`
 - `brief.md`

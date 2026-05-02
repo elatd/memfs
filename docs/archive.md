@@ -1,6 +1,6 @@
 # Verbatim Archive
 
-MemFS archives preserve raw source material before any model decides what is durable memory.
+VeriFS archives preserve raw source material before any model decides what is durable memory.
 
 Archive entries live under `/archive/` inside each workspace:
 
@@ -14,11 +14,11 @@ The raw archive file is canonical. Memory nodes derived from an archive entry ar
 ## CLI
 
 ```bash
-memfs archive add ./conversation.txt --type conversation --title "Claude coding session"
-memfs archive list
-memfs archive show <archive_id>
-memfs archive extract <archive_id>
-memfs archive search "OAuth refresh tokens"
+verifs archive add ./conversation.txt --type conversation --title "Claude coding session"
+verifs archive list
+verifs archive show <archive_id>
+verifs archive extract <archive_id>
+verifs archive search "OAuth refresh tokens"
 ```
 
 `archive add` stores the file text verbatim and records an audit event. It does not ingest the archive as approved durable memory.
@@ -28,14 +28,14 @@ memfs archive search "OAuth refresh tokens"
 ## Core API
 
 ```ts
-await memoryfs.archive.writeConversation(workspace.id, {
+await verifs.archive.writeConversation(workspace.id, {
   title: "Claude coding session",
   content: transcript
 });
 
-const entries = memoryfs.archive.list(workspace.id);
-const raw = await memoryfs.archive.read(workspace.id, entries[0].id);
-const candidates = await memoryfs.archive.extractToMemoryCandidates(workspace.id, entries[0].id);
+const entries = verifs.archive.list(workspace.id);
+const raw = await verifs.archive.read(workspace.id, entries[0].id);
+const candidates = await verifs.archive.extractToMemoryCandidates(workspace.id, entries[0].id);
 ```
 
 Available archive APIs:

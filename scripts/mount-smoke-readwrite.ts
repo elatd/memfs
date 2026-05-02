@@ -1,6 +1,6 @@
 import { buildServer } from "../apps/api/src/server.js";
 import { listMountRegistry, unmountMount } from "../apps/mountd/src/index.js";
-import { MemoryFSClient } from "../packages/sdk/src/index.js";
+import { VeriFSClient } from "../packages/sdk/src/index.js";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,8 +10,8 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-const requireFuse = process.env.MEMFS_REQUIRE_FUSE_TEST === "1";
-const tempDir = await mkdtemp(path.join(tmpdir(), "memfs-mount-smoke-"));
+const requireFuse = process.env.VERIFS_REQUIRE_FUSE_TEST === "1";
+const tempDir = await mkdtemp(path.join(tmpdir(), "verifs-mount-smoke-"));
 const dataDir = path.join(tempDir, "data");
 const configDir = path.join(tempDir, "config");
 const mountpoint = path.join(tempDir, "mount");
@@ -22,13 +22,13 @@ let mountExit: { code: number | null; signal: NodeJS.Signals | null } | null = n
 class SmokeSkip extends Error {}
 
 try {
-  process.env.MEMORYFS_DATA_DIR = dataDir;
+  process.env.VERIFS_DATA_DIR = dataDir;
   process.env.OPENAI_API_KEY = "";
   app = await buildServer();
   await app.listen({ host: "127.0.0.1", port: 0 });
   const address = app.server.address() as AddressInfo;
   const apiUrl = `http://127.0.0.1:${address.port}`;
-  const client = new MemoryFSClient(apiUrl);
+  const client = new VeriFSClient(apiUrl);
   const workspace = await client.createWorkspace("mount-smoke") as { id: string; name: string };
   await client.writeFile(workspace.id, "/scratch/seed.md", "Seed file for mount smoke.", {
     actor: "smoke:test",
@@ -53,7 +53,7 @@ try {
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
-        MEMFS_CONFIG_DIR: configDir
+        VERIFS_CONFIG_DIR: configDir
       }
     }
   );
@@ -91,11 +91,11 @@ try {
     throw error;
   }
 } finally {
-  await unmountMount(mountpoint, { MEMFS_CONFIG_DIR: configDir }).catch(() => null);
+  await unmountMount(mountpoint, { VERIFS_CONFIG_DIR: configDir }).catch(() => null);
   if (mountProcess && !mountProcess.killed) mountProcess.kill("SIGTERM");
   if (app) await app.close();
   await rm(tempDir, { recursive: true, force: true });
-  delete process.env.MEMORYFS_DATA_DIR;
+  delete process.env.VERIFS_DATA_DIR;
 }
 
 async function waitForMount(): Promise<void> {
@@ -109,7 +109,7 @@ async function waitForMount(): Promise<void> {
   });
 
   while (Date.now() < deadline) {
-    const entries = await listMountRegistry({ MEMFS_CONFIG_DIR: configDir });
+    const entries = await listMountRegistry({ VERIFS_CONFIG_DIR: configDir });
     if (entries.some((entry) => entry.mountpoint === mountpoint)) return;
     if (mountExit) {
       const reason = `mount process exited with code ${mountExit.code ?? "null"} signal ${mountExit.signal ?? "null"}. Output:\n${lastOutput}`;

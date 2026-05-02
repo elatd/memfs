@@ -1,6 +1,6 @@
-# MemFS Mount
+# VeriFS Mount
 
-MemFS can expose a workspace as a local filesystem mount through `apps/mountd`. The mount is backed by `@memoryfs/mount-core`, so file writes still go through the MemFS API/core path, protected path checks, blob storage, ingestion options, and audit events.
+VeriFS can expose a workspace as a local filesystem mount through `apps/mountd`. The mount is backed by `@verifs/mount-core`, so file writes still go through the VeriFS API/core path, protected path checks, blob storage, ingestion options, and audit events.
 
 Mount support is optional. If FUSE is not available, `mount-core` and the regular API/CLI continue to work.
 
@@ -19,7 +19,7 @@ On Linux:
 1. Install FUSE 3 with your package manager.
 2. Make sure `fusermount3` or `fusermount` is available.
 
-If FUSE is unavailable, mount smoke tests print a skip reason unless `MEMFS_REQUIRE_FUSE_TEST=1` is set.
+If FUSE is unavailable, mount smoke tests print a skip reason unless `VERIFS_REQUIRE_FUSE_TEST=1` is set.
 
 ## Read-Only Mode
 
@@ -27,16 +27,16 @@ Read-only is the default.
 
 ```bash
 pnpm dev
-mkdir -p ~/MemFS/demo
-pnpm exec memfs mount demo ~/MemFS/demo --read-only
+mkdir -p ~/VeriFS/demo
+pnpm exec verifs mount demo ~/VeriFS/demo --read-only
 ```
 
 Expected behavior:
 
-- `ls ~/MemFS/demo` lists workspace files and directories.
-- `cat ~/MemFS/demo/runs/.../result.md` reads MemFS file content.
-- `ls ~/MemFS/demo/.memfs` shows virtual control files.
-- `cat ~/MemFS/demo/.memfs/README.md` and `status.json` work.
+- `ls ~/VeriFS/demo` lists workspace files and directories.
+- `cat ~/VeriFS/demo/runs/.../result.md` reads VeriFS file content.
+- `ls ~/VeriFS/demo/.verifs` shows virtual control files.
+- `cat ~/VeriFS/demo/.verifs/README.md` and `status.json` work.
 
 Read-only mode rejects normal file writes with a read-only filesystem error.
 
@@ -45,18 +45,18 @@ Read-only mode rejects normal file writes with a read-only filesystem error.
 Write-through mode must be explicit:
 
 ```bash
-pnpm exec memfs mount demo ~/MemFS/demo --read-write
+pnpm exec verifs mount demo ~/VeriFS/demo --read-write
 ```
 
-Mounted writes call MemFS file APIs. The mount never writes directly to the workspace data directory.
+Mounted writes call VeriFS file APIs. The mount never writes directly to the workspace data directory.
 
 Examples:
 
 ```bash
-mkdir -p ~/MemFS/demo/runs/today
-echo "hello" > ~/MemFS/demo/runs/today/result.md
-echo "again" >> ~/MemFS/demo/runs/today/result.md
-pnpm exec memfs cat /runs/today/result.md
+mkdir -p ~/VeriFS/demo/runs/today
+echo "hello" > ~/VeriFS/demo/runs/today/result.md
+echo "again" >> ~/VeriFS/demo/runs/today/result.md
+pnpm exec verifs cat /runs/today/result.md
 ```
 
 Append uses per-file-handle buffering and commits on `flush` or `release`, so a `flush` followed by `release` does not duplicate content.
@@ -66,13 +66,13 @@ Append uses per-file-handle buffering and commits on `flush` or `release`, so a 
 By default, mount writes do not ingest memory:
 
 ```bash
-pnpm exec memfs mount demo ~/MemFS/demo --read-write
+pnpm exec verifs mount demo ~/VeriFS/demo --read-write
 ```
 
 Enable ingestion explicitly:
 
 ```bash
-pnpm exec memfs mount demo ~/MemFS/demo --read-write --ingest-on-write
+pnpm exec verifs mount demo ~/VeriFS/demo --read-write --ingest-on-write
 ```
 
 Every write uses the mount actor. The default actor is `mount:<os-username>` when available, otherwise `mount:local`.
@@ -80,10 +80,10 @@ Every write uses the mount actor. The default actor is `mount:<os-username>` whe
 Override it:
 
 ```bash
-pnpm exec memfs mount demo ~/MemFS/demo --read-write --actor mount:agent
+pnpm exec verifs mount demo ~/VeriFS/demo --read-write --actor mount:agent
 ```
 
-When ingestion is enabled, MemFS core applies the existing path-based trust policy:
+When ingestion is enabled, VeriFS core applies the existing path-based trust policy:
 
 - `/scratch/` ingested nodes are ephemeral.
 - `/runs/` ingested nodes are agent-generated.
@@ -105,7 +105,7 @@ Denied protected writes and deletes are audited by core/API.
 Allow protected writes only when you mean it:
 
 ```bash
-pnpm exec memfs mount demo ~/MemFS/demo --read-write --allow-protected-write
+pnpm exec verifs mount demo ~/VeriFS/demo --read-write --allow-protected-write
 ```
 
 Protected path errors are reported as:
@@ -121,33 +121,33 @@ The structured mount error code is `MOUNT_PROTECTED_PATH_DENIED`.
 Agents should write task output under `/runs/` by default:
 
 ```bash
-mkdir -p ~/MemFS/demo/runs/today
-echo "Implemented mount lifecycle checks." >> ~/MemFS/demo/runs/today/result.md
+mkdir -p ~/VeriFS/demo/runs/today
+echo "Implemented mount lifecycle checks." >> ~/VeriFS/demo/runs/today/result.md
 ```
 
 The CLI also has helpers:
 
 ```bash
-pnpm exec memfs run today
-pnpm exec memfs run path <run_id>
+pnpm exec verifs run today
+pnpm exec verifs run path <run_id>
 ```
 
 ## Control Directory
 
-`/.memfs` is reserved and cannot be overwritten as normal workspace files.
+`/.verifs` is reserved and cannot be overwritten as normal workspace files.
 
 Virtual files:
 
-- `/.memfs/README.md`
-- `/.memfs/status.json`
-- `/.memfs/recall.query`
-- `/.memfs/recall.results.md`
-- `/.memfs/search.query`
-- `/.memfs/search.results.md`
-- `/.memfs/brief.query`
-- `/.memfs/brief.results.md`
-- `/.memfs/audit.md`
-- `/.memfs/health.md`
+- `/.verifs/README.md`
+- `/.verifs/status.json`
+- `/.verifs/recall.query`
+- `/.verifs/recall.results.md`
+- `/.verifs/search.query`
+- `/.verifs/search.results.md`
+- `/.verifs/brief.query`
+- `/.verifs/brief.results.md`
+- `/.verifs/audit.md`
+- `/.verifs/health.md`
 
 `README.md` includes examples for using the control directory through ordinary file reads and writes.
 
@@ -156,38 +156,38 @@ Virtual files:
 Writing `search.query` runs meaning-oriented hybrid search and updates `search.results.md` for this mount session only.
 
 ```bash
-echo "OAuth refresh tokens" > ~/MemFS/demo/.memfs/search.query
-cat ~/MemFS/demo/.memfs/search.results.md
+echo "OAuth refresh tokens" > ~/VeriFS/demo/.verifs/search.query
+cat ~/VeriFS/demo/.verifs/search.results.md
 ```
 
 Writing `recall.query` runs normal trusted recall rules and updates `recall.results.md`. Stale, rejected, and superseded memories are excluded by default; raw source content is not returned.
 
 ```bash
-echo "backend preference" > ~/MemFS/demo/.memfs/recall.query
-cat ~/MemFS/demo/.memfs/recall.results.md
+echo "backend preference" > ~/VeriFS/demo/.verifs/recall.query
+cat ~/VeriFS/demo/.verifs/recall.results.md
 ```
 
 Writing `brief.query` creates a compact pre-task memory brief and updates `brief.results.md`.
 
 ```bash
-echo "Fix OAuth refresh token flow" > ~/MemFS/demo/.memfs/brief.query
-cat ~/MemFS/demo/.memfs/brief.results.md
+echo "Fix OAuth refresh token flow" > ~/VeriFS/demo/.verifs/brief.query
+cat ~/VeriFS/demo/.verifs/brief.results.md
 ```
 
 Search, recall, and brief results include `source_path`, trust level, score, memory node id, and `raw_ref`. They also include a warning that raw source must be read explicitly by opening the referenced source file or using raw-source tools.
 
 Control query writes emit `mount.recall.query`, `mount.search.query`, or `mount.brief.query` audit events when audit support is available.
 
-The `.memfs` namespace is reserved:
+The `.verifs` namespace is reserved:
 
 - control files are not normal workspace files
-- `rm .memfs` and `rm .memfs/*` fail
-- rename into or out of `.memfs` fails
+- `rm .verifs` and `rm .verifs/*` fail
+- rename into or out of `.verifs` fails
 - normal writes cannot overwrite control files, except query writes to `recall.query`, `search.query`, and `brief.query`
 
 ## Audit Events
 
-Mount lifecycle and file operations use the regular MemFS audit table when supported:
+Mount lifecycle and file operations use the regular VeriFS audit table when supported:
 
 - `mount.started`
 - `mount.stopped`
@@ -199,16 +199,16 @@ Mount lifecycle and file operations use the regular MemFS audit table when suppo
 - `mount.search.query`
 - `mount.brief.query`
 
-Core/API file events such as `file_write`, `file_delete`, `protected_write_denied`, and `memory_ingest_file` are still emitted by the underlying MemFS operations.
+Core/API file events such as `file_write`, `file_delete`, `protected_write_denied`, and `memory_ingest_file` are still emitted by the underlying VeriFS operations.
 
 ## Unmount and Status
 
 ```bash
-pnpm exec memfs mount status
-pnpm exec memfs unmount ~/MemFS/demo
+pnpm exec verifs mount status
+pnpm exec verifs unmount ~/VeriFS/demo
 ```
 
-The CLI records active mount metadata under `~/.memfs/mounts.json` or `MEMFS_CONFIG_DIR/mounts.json`.
+The CLI records active mount metadata under `~/.verifs/mounts.json` or `VERIFS_CONFIG_DIR/mounts.json`.
 
 ## Smoke Test
 
@@ -226,7 +226,7 @@ The smoke test:
 6. Attempts a protected write and checks the audit event.
 7. Unmounts.
 
-If FUSE is unavailable, it prints `SKIP` and exits successfully. Set `MEMFS_REQUIRE_FUSE_TEST=1` to make missing FUSE fail the test.
+If FUSE is unavailable, it prints `SKIP` and exits successfully. Set `VERIFS_REQUIRE_FUSE_TEST=1` to make missing FUSE fail the test.
 
 ## Known Limitations
 
@@ -235,4 +235,4 @@ If FUSE is unavailable, it prints `SKIP` and exits successfully. Set `MEMFS_REQU
 - Directory rename is not supported in this MVP.
 - File rename is implemented as read, write new path, then delete old path.
 - Sparse writes zero-fill gaps.
-- Binary writes use the existing upload API; text reads remain the common path for current MemFS files.
+- Binary writes use the existing upload API; text reads remain the common path for current VeriFS files.
