@@ -181,7 +181,7 @@ export function createHttpMountClient(options: { baseUrl?: string; client?: Veri
   const client = options.client ?? new VeriFSClient(options.baseUrl);
   return {
     getWorkspace: (workspaceId) => client.listWorkspaces().then((workspaces) => {
-      const workspace = asArray<Workspace>(workspaces).find((entry) => entry.id === workspaceId);
+      const workspace = workspaces.find((entry) => entry.id === workspaceId);
       if (!workspace) throw new MountCoreError("ENOENT", `Workspace not found: ${workspaceId}`);
       return workspace;
     }),
@@ -575,14 +575,14 @@ class VeriFSMountCore implements MountCore {
 
   private async renderAudit(): Promise<string> {
     if (!this.client.listAuditEvents) return "# Audit\n\nAudit events are not supported by this mount client.\n";
-    const events = asArray<AuditEvent>(await this.client.listAuditEvents(this.options.workspaceId, 50));
+    const events = await this.client.listAuditEvents(this.options.workspaceId, 50);
     if (events.length === 0) return "# Audit\n\nNo audit events.\n";
     return `# Audit\n\n${events.map((event) => `- ${event.created_at} ${event.actor} ${event.event_type}`).join("\n")}\n`;
   }
 
   private async renderHealth(): Promise<string> {
     if (!this.client.getMemoryHealth) return "# Memory Health\n\nMemory health is not supported by this mount client.\n";
-    const health = await this.client.getMemoryHealth(this.options.workspaceId) as MemoryHealthReport;
+    const health = await this.client.getMemoryHealth(this.options.workspaceId);
     return [
       "# Memory Health",
       "",
@@ -604,7 +604,7 @@ class VeriFSMountCore implements MountCore {
   }
 
   private async files(): Promise<FileRecord[]> {
-    return asArray<FileRecord>(await this.client.listFiles(this.options.workspaceId));
+    return this.client.listFiles(this.options.workspaceId);
   }
 
   private async findFile(filePath: string): Promise<FileRecord | null> {
@@ -690,17 +690,18 @@ function addChildEntry(entries: Map<string, MountDirEntry>, dirPath: string, can
   });
 }
 
-function asArray<T>(value: unknown): T[] {
-  return Array.isArray(value) ? value as T[] : [];
-}
-
 function isMissing(error: unknown): boolean {
   return error instanceof MountCoreError && error.code === "ENOENT";
 }
 
 function isNotFoundClientError(error: unknown): boolean {
-  return error instanceof VeriFSNotFoundError ||
-    (error instanceof Error && "statusCode" in error && error.statusCode === 404);
+  return error instanceof VeriFSNotFoundError || hasStatusCode(error, 404);
+}
+
+function hasStatusCode(error: unknown, statusCode: number): boolean {
+  if (!(error instanceof Error)) return false;
+  const maybeStatusError = error as Error & { statusCode?: unknown };
+  return maybeStatusError.statusCode === statusCode;
 }
 
 function renderRecallResults(title: string, response: RecallResponse | null): string {
@@ -735,9 +736,8 @@ function renderRecallResults(title: string, response: RecallResponse | null): st
 function renderSearchResults(title: string, response: RecallResponse | MemoryGrepResponse | null): string {
   if (!response) return `# ${title}\n\nNo query has been run.\n`;
   if (response.results.length === 0) return `# ${title}\n\nQuery: ${response.query}\n\nNo results.\n`;
-  const first = response.results[0] as unknown;
-  if (first && typeof first === "object" && "snippet" in first) {
-    const grep = response as MemoryGrepResponse;
+  if (isMemoryGrepResponse(response)) {
+    const grep = response;
     return [
       `# ${title}`,
       "",
@@ -762,7 +762,12 @@ function renderSearchResults(title: string, response: RecallResponse | MemoryGre
       ""
     ].join("\n");
   }
-  return renderRecallResults(title, response as RecallResponse);
+  return renderRecallResults(title, response);
+}
+
+function isMemoryGrepResponse(response: RecallResponse | MemoryGrepResponse): response is MemoryGrepResponse {
+  const first = response.results[0];
+  return typeof first === "object" && first !== null && "snippet" in first;
 }
 
 function renderBriefResults(response: BriefResponse | null): string {

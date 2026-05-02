@@ -137,6 +137,10 @@ const metadataMemoryNodeUpdatableColumns = [
 
 type MetadataSqlValue = string | number | null;
 
+function sqliteAll<T>(db: SqliteDatabase, sql: string, ...params: MetadataSqlValue[]): T[] {
+  return db.prepare(sql).all(...params) as unknown as T[];
+}
+
 function metadataMemoryNodeValues(node: MetadataMemoryNode): MetadataSqlValue[] {
   return [
     node.id,
@@ -209,7 +213,7 @@ export class SQLiteMetadataStore implements MetadataStore {
   }
 
   async listWorkspaces(): Promise<MetadataWorkspace[]> {
-    return this.requireDb().prepare("SELECT * FROM workspaces ORDER BY created_at DESC").all() as unknown as MetadataWorkspace[];
+    return sqliteAll<MetadataWorkspace>(this.requireDb(), "SELECT * FROM workspaces ORDER BY created_at DESC");
   }
 
   async putBlob(blob: MetadataBlob): Promise<void> {

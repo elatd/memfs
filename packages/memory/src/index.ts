@@ -3,6 +3,13 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { buildExtractMemoryNodesPrompt } from "./prompts/extract-memory-nodes.js";
 import { buildExtractReasoningMemoriesPrompt } from "./prompts/extract-reasoning-memories.js";
+import {
+  parseJsonBoundary,
+  requiredConfidence,
+  requiredObject,
+  requiredString,
+  requiredStringArray
+} from "./validation.js";
 
 export * from "./curation/index.js";
 
@@ -21,6 +28,9 @@ export const memoryTypes = [
 ] as const;
 
 export type MemoryType = (typeof memoryTypes)[number];
+type MemoryImportance = 1 | 2 | 3 | 4 | 5;
+
+const memoryTypeValues: ReadonlySet<string> = new Set(memoryTypes);
 
 export const recallModes = [
   "general",
@@ -41,7 +51,7 @@ export interface ExtractedMemoryNode {
   raw_excerpt: string;
   tags: string[];
   memory_type: MemoryType;
-  importance: 1 | 2 | 3 | 4 | 5;
+  importance: MemoryImportance;
   confidence: number;
 }
 
@@ -356,13 +366,7 @@ export async function extractMemoryNodesFromContent(input: {
 }
 
 export function validateExtractedNodesJson(jsonText: string, sourceContent?: string): ExtractedMemoryNode[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch (error) {
-    throw new Error(`Memory extraction did not return valid JSON: ${(error as Error).message}`);
-  }
-
+  const parsed = parseJsonBoundary(jsonText, "Memory extraction");
   if (!Array.isArray(parsed)) {
     throw new Error("Memory extraction JSON must be an array.");
   }
@@ -396,13 +400,7 @@ export function validateReasoningMemoriesJson(
   sourceContent?: string,
   sourceRun?: string
 ): ExtractedReasoningMemory[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch (error) {
-    throw new Error(`Reasoning memory extraction did not return valid JSON: ${(error as Error).message}`);
-  }
-
+  const parsed = parseJsonBoundary(jsonText, "Reasoning memory extraction");
   if (!Array.isArray(parsed)) {
     throw new Error("Reasoning memory JSON must be an array.");
   }
@@ -416,11 +414,7 @@ export function validateReasoningMemory(
   sourceContent?: string,
   sourceRun?: string
 ): ExtractedReasoningMemory {
-  if (!item || typeof item !== "object") {
-    throw new Error(`Reasoning memory at index ${index} must be an object.`);
-  }
-
-  const candidate = item as Record<string, unknown>;
+  const candidate = requiredObject(item, `Reasoning memory at index ${index}`);
   if (candidate.type !== "reasoning_memory") {
     throw new Error(`Reasoning memory at index ${index} type must be reasoning_memory.`);
   }
@@ -428,31 +422,29 @@ export function validateReasoningMemory(
     throw new Error(`Reasoning memory at index ${index} status must be candidate.`);
   }
 
-  const title = requiredString(candidate.title, "title", index);
-  const trigger = requiredString(candidate.trigger, "trigger", index);
-  const context = requiredString(candidate.context, "context", index);
-  const strategy = requiredString(candidate.strategy, "strategy", index);
-  const failurePattern = requiredString(candidate.failure_pattern, "failure_pattern", index);
-  const successPattern = requiredString(candidate.success_pattern, "success_pattern", index);
-  const sourceRunValue = requiredString(candidate.source_run, "source_run", index);
-  const reason = requiredString(candidate.reason, "reason", index);
+  const title = requiredString(candidate.title, reasoningMemoryField(index, "title"));
+  const trigger = requiredString(candidate.trigger, reasoningMemoryField(index, "trigger"));
+  const context = requiredString(candidate.context, reasoningMemoryField(index, "context"));
+  const strategy = requiredString(candidate.strategy, reasoningMemoryField(index, "strategy"));
+  const failurePattern = requiredString(candidate.failure_pattern, reasoningMemoryField(index, "failure_pattern"));
+  const successPattern = requiredString(candidate.success_pattern, reasoningMemoryField(index, "success_pattern"));
+  const sourceRunValue = requiredString(candidate.source_run, reasoningMemoryField(index, "source_run"));
+  const reason = requiredString(candidate.reason, reasoningMemoryField(index, "reason"));
 
   if (sourceRun && sourceRunValue !== sourceRun) {
     throw new Error(`Reasoning memory at index ${index} source_run must be ${sourceRun}.`);
   }
 
-  const appliesTo = requiredStringArray(candidate.applies_to, "applies_to", index);
-  const preconditions = requiredStringArray(candidate.preconditions, "preconditions", index);
-  const antiPatterns = requiredStringArray(candidate.anti_patterns, "anti_patterns", index);
-  const sourceRefs = requiredStringArray(candidate.source_refs, "source_refs", index);
+  const appliesTo = requiredStringArray(candidate.applies_to, reasoningMemoryField(index, "applies_to"), { maxItems: 12 });
+  const preconditions = requiredStringArray(candidate.preconditions, reasoningMemoryField(index, "preconditions"), { maxItems: 12 });
+  const antiPatterns = requiredStringArray(candidate.anti_patterns, reasoningMemoryField(index, "anti_patterns"), { maxItems: 12 });
+  const sourceRefs = requiredStringArray(candidate.source_refs, reasoningMemoryField(index, "source_refs"), { maxItems: 12 });
 
   if (sourceRefs.length === 0 || !sourceRefs.every((ref) => ref.startsWith(sourceRunValue))) {
     throw new Error(`Reasoning memory at index ${index} source_refs must point inside source_run.`);
   }
 
-  if (typeof candidate.confidence !== "number" || candidate.confidence < 0 || candidate.confidence > 1) {
-    throw new Error(`Reasoning memory at index ${index} confidence must be a number from 0 to 1.`);
-  }
+  const confidence = requiredConfidence(candidate.confidence, reasoningMemoryField(index, "confidence"));
 
   if (sourceContent) {
     const support = [title, trigger, context, strategy, failurePattern, successPattern, reason].some((field) =>
@@ -476,7 +468,7 @@ export function validateReasoningMemory(
     anti_patterns: antiPatterns,
     source_run: sourceRunValue,
     source_refs: sourceRefs,
-    confidence: candidate.confidence,
+    confidence,
     status: "candidate",
     reason
   };
@@ -487,22 +479,18 @@ export function validateExtractedNode(
   index = 0,
   sourceContent?: string
 ): ExtractedMemoryNode {
-  if (!item || typeof item !== "object") {
-    throw new Error(`Memory node at index ${index} must be an object.`);
-  }
-
-  const candidate = item as Record<string, unknown>;
-  const summary = requiredString(candidate.summary, "summary", index);
-  const trigger = requiredString(candidate.trigger, "trigger", index);
-  const detail = requiredString(candidate.detail, "detail", index);
-  const rawExcerpt = requiredString(candidate.raw_excerpt, "raw_excerpt", index);
-  const memoryType = requiredString(candidate.memory_type, "memory_type", index) as MemoryType;
+  const candidate = requiredObject(item, `Memory node at index ${index}`);
+  const summary = requiredString(candidate.summary, memoryNodeField(index, "summary"));
+  const trigger = requiredString(candidate.trigger, memoryNodeField(index, "trigger"));
+  const detail = requiredString(candidate.detail, memoryNodeField(index, "detail"));
+  const rawExcerpt = requiredString(candidate.raw_excerpt, memoryNodeField(index, "raw_excerpt"));
+  const memoryTypeValue = requiredString(candidate.memory_type, memoryNodeField(index, "memory_type"));
 
   if (!trigger.startsWith("Recall when")) {
     throw new Error(`Memory node at index ${index} trigger must begin with "Recall when".`);
   }
 
-  if (!memoryTypes.includes(memoryType)) {
+  if (!isMemoryType(memoryTypeValue)) {
     throw new Error(`Memory node at index ${index} has invalid memory_type.`);
   }
 
@@ -521,14 +509,8 @@ export function validateExtractedNode(
     throw new Error(`Memory node at index ${index} tags must contain 3 to 8 values.`);
   }
 
-  const importance = candidate.importance;
-  if (typeof importance !== "number" || !Number.isInteger(importance) || importance < 1 || importance > 5) {
-    throw new Error(`Memory node at index ${index} importance must be an integer from 1 to 5.`);
-  }
-
-  if (typeof candidate.confidence !== "number" || candidate.confidence < 0 || candidate.confidence > 1) {
-    throw new Error(`Memory node at index ${index} confidence must be a number from 0 to 1.`);
-  }
+  const importance = requiredMemoryImportance(candidate.importance, index);
+  const confidence = requiredConfidence(candidate.confidence, memoryNodeField(index, "confidence"));
 
   if (sourceContent && rawExcerpt && !sourceContent.includes(rawExcerpt)) {
     throw new Error(`Memory node at index ${index} raw_excerpt must be an exact source excerpt.`);
@@ -540,34 +522,33 @@ export function validateExtractedNode(
     detail,
     raw_excerpt: rawExcerpt,
     tags,
-    memory_type: memoryType,
-    importance: importance as 1 | 2 | 3 | 4 | 5,
-    confidence: candidate.confidence
+    memory_type: memoryTypeValue,
+    importance,
+    confidence
   };
 }
 
-function requiredString(value: unknown, field: string, index: number): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`Memory node at index ${index} ${field} must be a non-empty string.`);
-  }
-
-  return value.trim();
+function memoryNodeField(index: number, field: string): string {
+  return `Memory node at index ${index} ${field}`;
 }
 
-function requiredStringArray(value: unknown, field: string, index: number): string[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`Reasoning memory at index ${index} ${field} must be an array.`);
+function reasoningMemoryField(index: number, field: string): string {
+  return `Reasoning memory at index ${index} ${field}`;
+}
+
+function isMemoryType(value: string): value is MemoryType {
+  return memoryTypeValues.has(value);
+}
+
+function requiredMemoryImportance(value: unknown, index: number): MemoryImportance {
+  if (typeof value !== "number" || !isMemoryImportance(value)) {
+    throw new Error(`Memory node at index ${index} importance must be an integer from 1 to 5.`);
   }
-  const items = value.map((item, itemIndex) => {
-    if (typeof item !== "string" || !item.trim()) {
-      throw new Error(`Reasoning memory at index ${index} ${field}[${itemIndex}] must be a non-empty string.`);
-    }
-    return item.trim();
-  });
-  if (items.length > 12) {
-    throw new Error(`Reasoning memory at index ${index} ${field} must contain at most 12 values.`);
-  }
-  return unique(items);
+  return value;
+}
+
+function isMemoryImportance(value: number): value is MemoryImportance {
+  return Number.isInteger(value) && value >= 1 && value <= 5;
 }
 
 export function fallbackExtractMemoryNodes(content: string, path: string): ExtractedMemoryNode[] {
@@ -843,7 +824,7 @@ export async function embedText(text: string, options: MemoryModelOptions = {}):
     try {
       return await requestEmbedding(text, { ...options, apiKey });
     } catch {
-      // Fall through to local embeddings before the deterministic lexical fallback.
+      // Fall through to local embeddings before deterministic lexical fallback.
     }
   }
 
@@ -890,7 +871,7 @@ async function requestLocalOnnxEmbedding(text: string, options: MemoryModelOptio
   }
   const extractor = await pipelinePromise;
   const output = await extractor(text.slice(0, 8192), { pooling: "mean", normalize: true });
-  const vector = Array.from(output.data as Iterable<number>);
+  const vector = Array.from(output.data);
   if (vector.length === 0) {
     throw new Error("Local ONNX embedding returned an empty vector.");
   }

@@ -1,3 +1,5 @@
+import { errorMessage } from "../validation.js";
+
 export interface ExtractorInput {
   mimeType?: string;
   path: string;
@@ -123,7 +125,7 @@ export const jsonExtractor: FileExtractor = {
       return {
         text,
         sections: paragraphSections(text, "json"),
-        metadata: { type: "json", valid: false, error: (error as Error).message }
+        metadata: { type: "json", valid: false, error: errorMessage(error) }
       };
     }
   }
@@ -365,11 +367,11 @@ export const pdfExtractor: FileExtractor = {
             type: "pdf",
             page_count: fallback.pageCount,
             fallback_extractor: "literal_pdf_text",
-            parser_error: (error as Error).message
+            parser_error: errorMessage(error)
           }
         };
       }
-      return failedDocument(input, "pdf", `PDF extraction failed: ${(error as Error).message}`);
+      return failedDocument(input, "pdf", `PDF extraction failed: ${errorMessage(error)}`);
     }
   }
 };
@@ -397,7 +399,7 @@ export const docxExtractor: FileExtractor = {
         }
       };
     } catch (error) {
-      return failedDocument(input, "docx", `DOCX extraction failed: ${(error as Error).message}`);
+      return failedDocument(input, "docx", `DOCX extraction failed: ${errorMessage(error)}`);
     }
   }
 };
@@ -406,7 +408,7 @@ export const imageExtractor: FileExtractor = {
   version: "1.0.0",
   supports: (input) => input.mimeType?.startsWith("image/") || extension(input.path, ["png", "jpg", "jpeg", "gif", "webp", "tiff"]),
   async extract(input) {
-    return unsupportedDocument(input, "image", "Image OCR/caption extraction is not enabled in this clean-room MVP.");
+    return unsupportedDocument(input, "image", "Image OCR/caption extraction is not enabled.");
   }
 };
 
@@ -716,7 +718,7 @@ function unsupportedExtractor(name: string, extensions: string[], mimeType?: str
     version: "1.0.0",
     supports: (input) => (mimeType ? input.mimeType === mimeType : false) || extension(input.path, extensions),
     async extract(input) {
-      return unsupportedDocument(input, name, `${name.toUpperCase()} extraction is not enabled in this MVP.`);
+      return unsupportedDocument(input, name, `${name.toUpperCase()} extraction is not enabled.`);
     }
   };
 }

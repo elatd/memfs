@@ -51,7 +51,7 @@ interface FileHandle {
   writing: boolean;
 }
 
-interface FuseConstants {
+export interface FuseConstants {
   ENOENT: number;
   EISDIR: number;
   ENOTDIR: number;
@@ -64,12 +64,30 @@ interface FuseConstants {
   EBADF: number;
 }
 
-export type FuseCallback<T = unknown> = (errorCode: number, arg?: T) => void;
+export interface FuseStat {
+  mtime: Date;
+  atime: Date;
+  ctime: Date;
+  size: number;
+  mode: number;
+  uid: number;
+  gid: number;
+}
+
+export interface FuseMountOptions {
+  debug?: boolean;
+  force?: boolean;
+  mkdir?: boolean;
+  [option: string]: unknown;
+}
+
+export type FuseCallback<T = void> = (errorCode: number, arg?: T) => void;
 
 type FuseOperationResult = void | Promise<void>;
+type FuseResultCallback = (resultOrErrorCode: number) => void;
 
 export interface FuseOperations {
-  getattr(filePath: string, callback: FuseCallback<Record<string, unknown>>): FuseOperationResult;
+  getattr(filePath: string, callback: FuseCallback<FuseStat>): FuseOperationResult;
   readdir(dirPath: string, callback: FuseCallback<string[]>): FuseOperationResult;
   open(filePath: string, flags: number, callback: FuseCallback<number>): FuseOperationResult;
   create(filePath: string, mode: number, callback: FuseCallback<number>): FuseOperationResult;
@@ -79,7 +97,7 @@ export interface FuseOperations {
     buffer: Buffer,
     length: number,
     position: number,
-    callback: FuseCallback<number>
+    callback: FuseResultCallback
   ): FuseOperationResult;
   write(
     filePath: string,
@@ -87,7 +105,7 @@ export interface FuseOperations {
     buffer: Buffer,
     length: number,
     position: number,
-    callback: FuseCallback<number>
+    callback: FuseResultCallback
   ): FuseOperationResult;
   flush(filePath: string, fd: number, callback: FuseCallback): FuseOperationResult;
   fsync(filePath: string, fd: number, datasync: number, callback: FuseCallback): FuseOperationResult;
@@ -107,7 +125,7 @@ interface FuseInstance {
 }
 
 interface FuseConstructor extends Partial<FuseConstants> {
-  new (mountpoint: string, operations: FuseOperations, options?: Record<string, unknown>): FuseInstance;
+  new (mountpoint: string, operations: FuseOperations, options?: FuseMountOptions): FuseInstance;
   isConfigured?: (callback: (error: Error | null, configured?: boolean) => void) => void;
 }
 
@@ -165,31 +183,32 @@ export function parseMountdArgs(argv: string[], env: NodeJS.ProcessEnv = process
 }
 
 export function createFuseOperations(core: MountCore, options: { mode: MountMode; constants?: Partial<FuseConstants> }): FuseOperations {
-  const constants = { ...fallbackFuseConstants, ...options.constants };
+  const constants = completeFuseConstants(options.constants);
   let nextFd = 42;
   const handles = new Map<number, FileHandle>();
+  const run = (callback: (errorCode: number) => void, task: () => Promise<void>) =>
+    runFuseOperation(task, callback, constants);
+  const rejectReadOnly = (callback: (errorCode: number) => void): boolean => {
+    if (options.mode !== "read-only") return false;
+    callback(constants.EROFS);
+    return true;
+  };
 
-  const op = {
-    getattr: async (filePath: string, callback: FuseCallback<Record<string, unknown>>) => {
-      try {
+  return {
+    getattr: (filePath: string, callback: FuseCallback<FuseStat>) =>
+      run(callback, async () => {
         const mountStat = await core.stat(filePath);
         callback(0, toFuseStat(mountStat.type, mountStat.size, mountStat.mtime));
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    },
+      }),
 
-    readdir: async (dirPath: string, callback: FuseCallback<string[]>) => {
-      try {
+    readdir: (dirPath: string, callback: FuseCallback<string[]>) =>
+      run(callback, async () => {
         const entries = await core.list(dirPath);
         callback(0, entries.map((entry) => entry.name));
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    },
+      }),
 
-    open: async (filePath: string, flags: number, callback: FuseCallback<number>) => {
-      try {
+    open: (filePath: string, flags: number, callback: FuseCallback<number>) =>
+      run(callback, async () => {
         const wantsWrite = isWriteFlag(flags);
         const normalized = normalizeMountPath(filePath);
         if (wantsWrite && options.mode === "read-only" && !isControlQueryPath(normalized)) {
@@ -218,29 +237,20 @@ export function createFuseOperations(core: MountCore, options: { mode: MountMode
         const fd = nextFd++;
         handles.set(fd, { path: normalized, buffer: null, dirty: false, append: false, writing: false });
         callback(0, fd);
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    },
+      }),
 
-    create: async (filePath: string, _mode: number, callback: FuseCallback<number>) => {
-      try {
-        if (options.mode === "read-only") {
-          callback(constants.EROFS);
-          return;
-        }
+    create: (filePath: string, _mode: number, callback: FuseCallback<number>) =>
+      run(callback, async () => {
+        if (rejectReadOnly(callback)) return;
         const normalized = normalizeMountPath(filePath);
         ensureNoDirtyHandle(handles, normalized);
         const fd = nextFd++;
         handles.set(fd, { path: normalized, buffer: Buffer.alloc(0), dirty: true, append: false, writing: true });
         callback(0, fd);
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    },
+      }),
 
-    read: async (filePath: string, fd: number, buffer: Buffer, length: number, position: number, callback: FuseCallback<number>) => {
-      try {
+    read: (filePath: string, fd: number, buffer: Buffer, length: number, position: number, callback: FuseResultCallback) =>
+      run(callback, async () => {
         const handle = handles.get(fd);
         const bytes = handle?.buffer ?? Buffer.from(await core.read(filePath));
         if (position >= bytes.byteLength) {
@@ -250,13 +260,10 @@ export function createFuseOperations(core: MountCore, options: { mode: MountMode
         const slice = bytes.subarray(position, Math.min(position + length, bytes.byteLength));
         slice.copy(buffer);
         callback(slice.byteLength);
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    },
+      }),
 
-    write: async (_filePath: string, fd: number, buffer: Buffer, length: number, position: number, callback: FuseCallback<number>) => {
-      try {
+    write: (_filePath: string, fd: number, buffer: Buffer, length: number, position: number, callback: FuseResultCallback) =>
+      run(callback, async () => {
         const handle = handles.get(fd);
         if (!handle || !handle.writing || !handle.buffer) {
           callback(constants.EBADF);
@@ -267,108 +274,68 @@ export function createFuseOperations(core: MountCore, options: { mode: MountMode
         handle.buffer = applyWrite(handle.buffer, chunk, offset);
         handle.dirty = true;
         callback(length);
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    },
+      }),
 
-    flush: async (_filePath: string, fd: number, callback: FuseCallback) => {
-      try {
+    flush: (_filePath: string, fd: number, callback: FuseCallback) =>
+      run(callback, async () => {
         await commitHandle(core, handles.get(fd));
         callback(0);
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    },
+      }),
 
-    fsync: async (_filePath: string, fd: number, _datasync: number, callback: FuseCallback) => {
-      try {
+    fsync: (_filePath: string, fd: number, _datasync: number, callback: FuseCallback) =>
+      run(callback, async () => {
         await commitHandle(core, handles.get(fd));
         callback(0);
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    },
+      }),
 
-    release: async (_filePath: string, fd: number, callback: FuseCallback) => {
-      try {
+    release: (_filePath: string, fd: number, callback: FuseCallback) =>
+      run(callback, async () => {
         const handle = handles.get(fd);
-        await commitHandle(core, handle);
-        handles.delete(fd);
-        callback(0);
-      } catch (error) {
-        handles.delete(fd);
-        callback(fuseErrorCode(error, constants));
-      }
-    },
-
-    unlink: async (filePath: string, callback: FuseCallback) => {
-      try {
-        if (options.mode === "read-only") {
-          callback(constants.EROFS);
-          return;
+        try {
+          await commitHandle(core, handle);
+        } finally {
+          handles.delete(fd);
         }
+        callback(0);
+      }),
+
+    unlink: (filePath: string, callback: FuseCallback) =>
+      run(callback, async () => {
+        if (rejectReadOnly(callback)) return;
         await core.unlink(filePath);
         callback(0);
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    },
+      }),
 
-    mkdir: async (dirPath: string, _mode: number, callback: FuseCallback) => {
-      try {
-        if (options.mode === "read-only") {
-          callback(constants.EROFS);
-          return;
-        }
+    mkdir: (dirPath: string, _mode: number, callback: FuseCallback) =>
+      run(callback, async () => {
+        if (rejectReadOnly(callback)) return;
         await core.mkdir(dirPath);
         callback(0);
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    },
+      }),
 
-    rmdir: async (dirPath: string, callback: FuseCallback) => {
-      try {
-        if (options.mode === "read-only") {
-          callback(constants.EROFS);
-          return;
-        }
+    rmdir: (dirPath: string, callback: FuseCallback) =>
+      run(callback, async () => {
+        if (rejectReadOnly(callback)) return;
         await core.rmdir(dirPath);
         callback(0);
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    },
+      }),
 
-    rename: async (from: string, to: string, callback: FuseCallback) => {
-      try {
-        if (options.mode === "read-only") {
-          callback(constants.EROFS);
-          return;
-        }
+    rename: (from: string, to: string, callback: FuseCallback) =>
+      run(callback, async () => {
+        if (rejectReadOnly(callback)) return;
         await core.rename(from, to);
         callback(0);
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    },
+      }),
 
-    truncate: async (filePath: string, size: number, callback: FuseCallback) => {
-      try {
-        if (options.mode === "read-only") {
-          callback(constants.EROFS);
-          return;
-        }
+    truncate: (filePath: string, size: number, callback: FuseCallback) =>
+      run(callback, async () => {
+        if (rejectReadOnly(callback)) return;
         await core.truncate(filePath, size);
         callback(0);
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    },
+      }),
 
-    ftruncate: async (_filePath: string, fd: number, size: number, callback: FuseCallback) => {
-      try {
+    ftruncate: (_filePath: string, fd: number, size: number, callback: FuseCallback) =>
+      run(callback, async () => {
         const handle = handles.get(fd);
         if (!handle || !handle.writing || !handle.buffer) {
           callback(constants.EBADF);
@@ -377,22 +344,14 @@ export function createFuseOperations(core: MountCore, options: { mode: MountMode
         handle.buffer = resizeBuffer(handle.buffer, size);
         handle.dirty = true;
         callback(0);
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    },
+      }),
 
-    destroy: async (callback: FuseCallback) => {
-      try {
+    destroy: (callback: FuseCallback) =>
+      run(callback, async () => {
         await core.dispose();
         callback(0);
-      } catch (error) {
-        callback(fuseErrorCode(error, constants));
-      }
-    }
+      })
   };
-
-  return op;
 }
 
 export function isWriteFlag(flags: number): boolean {
@@ -405,7 +364,7 @@ export function isWriteFlag(flags: number): boolean {
 }
 
 export function fuseErrorCode(error: unknown, constants: Partial<FuseConstants> = fallbackFuseConstants): number {
-  const complete = { ...fallbackFuseConstants, ...constants };
+  const complete = completeFuseConstants(constants);
   if (error instanceof MountCoreError) {
     switch (error.code) {
       case "ENOENT":
@@ -434,6 +393,18 @@ export function fuseErrorCode(error: unknown, constants: Partial<FuseConstants> 
   return complete.EINVAL;
 }
 
+async function runFuseOperation(
+  task: () => Promise<void>,
+  callback: (errorCode: number) => void,
+  constants: FuseConstants
+): Promise<void> {
+  try {
+    await task();
+  } catch (error) {
+    callback(fuseErrorCode(error, constants));
+  }
+}
+
 export async function runMountd(argv: string[], env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const config = parseMountdArgs(argv, env);
   const Fuse = await loadFuse();
@@ -441,7 +412,7 @@ export async function runMountd(argv: string[], env: NodeJS.ProcessEnv = process
   await validateMountpoint(config);
 
   const client = new VeriFSClient(config.apiUrl);
-  const workspaces = await client.listWorkspaces() as Array<{ id: string; name: string }>;
+  const workspaces = await client.listWorkspaces();
   const workspace = workspaces.find((entry) => entry.id === config.workspace || entry.name === config.workspace);
   if (!workspace) throw new Error(`Workspace not found: ${config.workspace}`);
 
@@ -623,7 +594,7 @@ function isControlQueryPath(filePath: string): boolean {
   return filePath === "/.verifs/recall.query" || filePath === "/.verifs/search.query" || filePath === "/.verifs/brief.query";
 }
 
-function toFuseStat(type: MountNodeType, size: number, timestamp: Date): Record<string, unknown> {
+function toFuseStat(type: MountNodeType, size: number, timestamp: Date): FuseStat {
   return {
     mtime: timestamp,
     atime: timestamp,
@@ -648,6 +619,15 @@ function fuseConstantsFrom(Fuse: Partial<FuseConstants>): Partial<FuseConstants>
     EBUSY: Fuse.EBUSY,
     EBADF: Fuse.EBADF
   };
+}
+
+function completeFuseConstants(constants: Partial<FuseConstants> = {}): FuseConstants {
+  const complete = { ...fallbackFuseConstants };
+  for (const key of fuseConstantKeys) {
+    const value = constants[key];
+    if (typeof value === "number") complete[key] = value;
+  }
+  return complete;
 }
 
 async function readMountRegistry(env: NodeJS.ProcessEnv): Promise<MountRegistryEntry[]> {
@@ -705,6 +685,19 @@ function defaultMountActor(): string {
     return "mount:local";
   }
 }
+
+const fuseConstantKeys = [
+  "ENOENT",
+  "EISDIR",
+  "ENOTDIR",
+  "EROFS",
+  "EACCES",
+  "EINVAL",
+  "ENOTEMPTY",
+  "ENOTSUP",
+  "EBUSY",
+  "EBADF"
+] as const satisfies readonly (keyof FuseConstants)[];
 
 const fallbackFuseConstants: FuseConstants = {
   ENOENT: -2,

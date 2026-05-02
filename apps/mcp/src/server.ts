@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 import {
   VeriFS,
+  editableMemoryCandidateStatuses,
+  memoryCandidateStatuses,
   memoryScopes,
   memoryTrustLevels,
   memoryTypes,
   parseStringUnion,
   recallModes,
+  type MemoryCandidateStatus,
   type MemoryGrepOptions,
+  type MemoryScope,
   type MemoryTrustLevel,
   type MemoryType,
   type RecallOptions
@@ -438,13 +442,13 @@ export function createVeriFSMcpToolHandlers(verifs: VeriFS): McpToolHandlers {
         summary,
         trigger,
         detail,
-        memory_type: memory_type as never,
+        memory_type: parseMemoryType(memory_type),
         source_path: source_path ? requireAbsolutePath(source_path) : undefined,
         promotion_target_path: promotion_target_path ? requireAbsolutePath(promotion_target_path) : undefined,
         confidence,
         reason,
         actor,
-        scope: scope as never,
+        scope: parseMemoryScope(scope),
         project_slug,
         repo_path,
         session_id,
@@ -466,10 +470,10 @@ export function createVeriFSMcpToolHandlers(verifs: VeriFS): McpToolHandlers {
       run_id
     }) =>
       verifs.listCandidates(workspace_id, {
-        status: status as never,
+        status: parseMemoryCandidateStatus(status),
         duplicates,
         conflicts,
-        scope: scope as never,
+        scope: parseMemoryScopeOption(scope),
         project_slug,
         repo_path,
         session_id,
@@ -496,9 +500,9 @@ export function createVeriFSMcpToolHandlers(verifs: VeriFS): McpToolHandlers {
         trigger,
         detail,
         memory_text,
-        memory_type: memory_type as never,
+        memory_type: parseMemoryType(memory_type),
         confidence,
-        status: status as never,
+        status: parseEditableMemoryCandidateStatus(status),
         reason,
         actor
       }),
@@ -531,7 +535,7 @@ export function createVeriFSMcpToolHandlers(verifs: VeriFS): McpToolHandlers {
       verifs.createBrief(workspace_id, {
         task: requireNonEmpty(task, "task"),
         project_hint,
-        scope: scope as never,
+        scope: parseMemoryScopeOption(scope),
         project_slug,
         repo_path,
         session_id,
@@ -1351,6 +1355,32 @@ function parseMemoryTypes(values: string[] | undefined): MemoryType[] | undefine
 
 function parseMemoryTrustLevels(values: string[] | undefined): MemoryTrustLevel[] | undefined {
   return parseStringUnion(values, memoryTrustLevels, "trust_levels");
+}
+
+function parseMemoryType(value: string | undefined): MemoryType | undefined {
+  return parseStringUnion(value ? [value] : undefined, memoryTypes, "memory_type")?.[0];
+}
+
+function parseMemoryScope(value: string | undefined): MemoryScope | undefined {
+  return parseStringUnion(value ? [value] : undefined, memoryScopes, "scope")?.[0];
+}
+
+function parseMemoryScopeOption(value: string | string[] | undefined): RecallOptions["scope"] {
+  return parseStringUnion(stringList(value), memoryScopes, "scope");
+}
+
+function parseMemoryCandidateStatus(value: string | undefined): MemoryCandidateStatus | undefined {
+  return parseStringUnion(value ? [value] : undefined, memoryCandidateStatuses, "status")?.[0];
+}
+
+function parseEditableMemoryCandidateStatus(value: string | undefined): Exclude<MemoryCandidateStatus, "approved" | "rejected"> | undefined {
+  return parseStringUnion(value ? [value] : undefined, editableMemoryCandidateStatuses, "status")?.[0];
+}
+
+function stringList(value: string | string[] | undefined): string[] | undefined {
+  if (value === undefined) return undefined;
+  const values = Array.isArray(value) ? value : [value];
+  return values.flatMap((entry) => entry.split(",").map((item) => item.trim()).filter(Boolean));
 }
 
 function requireAbsolutePath(value: string | undefined): string {

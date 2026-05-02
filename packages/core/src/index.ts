@@ -7,6 +7,7 @@ import {
   extractMemoryNodesFromContent,
   extractReasoningMemoriesFromRun,
   keywordScore,
+  memoryCandidateStatuses,
   planRecallQuery,
   riskFlagsForText,
   reciprocalRankFusion,
@@ -15,6 +16,7 @@ import {
   type ExtractedMemoryNode,
   type ExtractedReasoningMemory,
   type CandidateSourceKind,
+  type MemoryCandidateStatus,
   type MemoryModelOptions,
   type MemoryType,
   type RecallMode,
@@ -31,13 +33,14 @@ export type {
   CandidateSourceKind,
   ExtractedMemoryNode,
   ExtractedReasoningMemory,
+  MemoryCandidateStatus,
   MemoryModelOptions,
   MemoryType,
   RankedItem,
   RecallMode,
   RecallQueryPlan
 } from "@verifs/memory";
-export { memoryTypes, recallModes } from "@verifs/memory";
+export { memoryCandidateStatuses, memoryTypes, recallModes } from "@verifs/memory";
 
 export const defaultProtectedPathGlobs = [
   "/profile.md",
@@ -76,15 +79,14 @@ export const memoryTrustLevels = [
   "rejected"
 ] as const;
 export type MemoryTrustLevel = (typeof memoryTrustLevels)[number];
-export type MemoryCandidateStatus =
-  | "observed"
-  | "candidate"
-  | "duplicate"
-  | "approved"
-  | "rejected"
-  | "superseded"
-  | "stale"
-  | "conflicted";
+export const editableMemoryCandidateStatuses = [
+  "observed",
+  "candidate",
+  "duplicate",
+  "superseded",
+  "stale",
+  "conflicted"
+] as const satisfies readonly Exclude<MemoryCandidateStatus, "approved" | "rejected">[];
 export type MemoryNodeStatus = MemoryCandidateStatus | "active" | "pending";
 export type PromotionStatus = "pending" | "approved" | "rejected" | "applied";
 export type SnapshotItemType =
@@ -106,6 +108,8 @@ export type TeamRole = "owner" | "admin" | "editor" | "agent" | "viewer";
 export type ConflictStatus = "unresolved" | "resolved_local" | "resolved_remote" | "resolved_manual";
 export type ConflictResolutionMode = "keep_local" | "keep_remote" | "manual_merge" | "keep_both";
 export type CandidateConflictResolutionMode = "keep_new" | "keep_old" | "keep_both" | "mark_superseded";
+export type JsonObject = Record<string, unknown>;
+export type SourceLocation = JsonObject;
 
 export interface VeriFSOptions {
   dataDir: string;
@@ -396,7 +400,7 @@ export interface RecallResult {
   score: number;
   source_path: string;
   raw_ref: string;
-  source_location?: Record<string, unknown> | null;
+  source_location?: SourceLocation | null;
   source_kind?: string | null;
   extractor_name?: string | null;
   raw_excerpt?: string | null;
@@ -420,7 +424,7 @@ export interface MemoryNodeSource {
   node: MemoryNode;
   source_file: FileRecord;
   raw_ref: string;
-  source_location: Record<string, unknown> | null;
+  source_location: SourceLocation | null;
   source_kind: string | null;
   extracted_sources: ExtractedSource[];
 }
@@ -461,7 +465,7 @@ export interface MemoryGrepResult {
   source_path: string;
   raw_ref: string | null;
   line: number | null;
-  source_location?: Record<string, unknown> | null;
+  source_location?: SourceLocation | null;
   snippet: string;
   score: number;
   trust: MemoryTrustLevel | null;
@@ -628,7 +632,7 @@ export interface MemoryReview {
 export interface MemoryCandidateSourceRef {
   source_path: string;
   raw_ref: string;
-  source_location: Record<string, unknown> | null;
+  source_location: SourceLocation | null;
 }
 
 export interface MemoryCandidate {
@@ -959,7 +963,7 @@ export interface ArchiveWriteInput {
   title?: string;
   content: string;
   actor?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: JsonObject;
 }
 
 export interface ArchiveImportInput extends ArchiveWriteInput {
@@ -1072,6 +1076,12 @@ export function parseStringUnion<const T extends readonly string[]>(
   });
 }
 
+type SqliteParams = Parameters<ReturnType<SqliteDatabase["prepare"]>["all"]>;
+
+function sqliteAll<T>(db: SqliteDatabase, sql: string, ...params: SqliteParams): T[] {
+  return db.prepare(sql).all(...params) as unknown as T[];
+}
+
 export class VeriFS {
   readonly archive: ArchiveApi;
   readonly dataDir: string;
@@ -1153,7 +1163,7 @@ export class VeriFS {
   }
 
   listWorkspaces(): Workspace[] {
-    return this.db.prepare("SELECT * FROM workspaces ORDER BY created_at DESC").all() as unknown as Workspace[];
+    return sqliteAll<Workspace>(this.db, "SELECT * FROM workspaces ORDER BY created_at DESC");
   }
 
   getWorkspace(workspaceId: string): Workspace {
@@ -1168,9 +1178,7 @@ export class VeriFS {
 
   listFiles(workspaceId: string): FileRecord[] {
     this.getWorkspace(workspaceId);
-    return this.db
-      .prepare("SELECT * FROM files WHERE workspace_id = ? ORDER BY path ASC")
-      .all(workspaceId) as unknown as FileRecord[];
+    return sqliteAll<FileRecord>(this.db, "SELECT * FROM files WHERE workspace_id = ? ORDER BY path ASC", workspaceId);
   }
 
   async readFile(
@@ -1398,15 +1406,20 @@ export class VeriFS {
   listExtractedSources(workspaceId: string, selector?: string): ExtractedSource[] {
     this.getWorkspace(workspaceId);
     if (!selector) {
-      return this.db
-        .prepare("SELECT * FROM extracted_sources WHERE workspace_id = ? ORDER BY created_at DESC")
-        .all(workspaceId) as unknown as ExtractedSource[];
+      return sqliteAll<ExtractedSource>(
+        this.db,
+        "SELECT * FROM extracted_sources WHERE workspace_id = ? ORDER BY created_at DESC",
+        workspaceId
+      );
     }
 
     const file = selector.startsWith("/") ? this.getFileByPath(workspaceId, selector) : this.getFileById(workspaceId, selector);
-    return this.db
-      .prepare("SELECT * FROM extracted_sources WHERE workspace_id = ? AND file_id = ? ORDER BY created_at DESC")
-      .all(workspaceId, file.id) as unknown as ExtractedSource[];
+    return sqliteAll<ExtractedSource>(
+      this.db,
+      "SELECT * FROM extracted_sources WHERE workspace_id = ? AND file_id = ? ORDER BY created_at DESC",
+      workspaceId,
+      file.id
+    );
   }
 
   async writeArchiveConversation(workspaceId: string, input: ArchiveWriteInput): Promise<ArchiveEntry> {
@@ -1423,9 +1436,11 @@ export class VeriFS {
 
   listArchive(workspaceId: string): ArchiveEntry[] {
     this.getWorkspace(workspaceId);
-    return this.db
-      .prepare("SELECT * FROM archive_entries WHERE workspace_id = ? ORDER BY created_at DESC")
-      .all(workspaceId) as unknown as ArchiveEntry[];
+    return sqliteAll<ArchiveEntry>(
+      this.db,
+      "SELECT * FROM archive_entries WHERE workspace_id = ? ORDER BY created_at DESC",
+      workspaceId
+    );
   }
 
   getArchiveEntry(workspaceId: string, archiveId: string): ArchiveEntry {
@@ -2002,15 +2017,15 @@ export class VeriFS {
 
   listMemoryNodes(workspaceId: string): MemoryNode[] {
     this.getWorkspace(workspaceId);
-    const rows = this.db
-      .prepare(
-        `SELECT memory_nodes.*, files.path AS source_path
-         FROM memory_nodes
-         JOIN files ON files.id = memory_nodes.source_file_id
-         WHERE memory_nodes.workspace_id = ?
-         ORDER BY memory_nodes.updated_at DESC`
-      )
-      .all(workspaceId) as unknown as MemoryNodeRow[];
+    const rows = sqliteAll<MemoryNodeRow>(
+      this.db,
+      `SELECT memory_nodes.*, files.path AS source_path
+       FROM memory_nodes
+       JOIN files ON files.id = memory_nodes.source_file_id
+       WHERE memory_nodes.workspace_id = ?
+       ORDER BY memory_nodes.updated_at DESC`,
+      workspaceId
+    );
     return rows.map((row) => this.withTemporalLinks(workspaceId, rowToMemoryNode(row)));
   }
 
@@ -2031,22 +2046,24 @@ export class VeriFS {
   }
 
   private withTemporalLinks(workspaceId: string, node: MemoryNode): MemoryNode {
-    const supersedes = this.db
-      .prepare(
-        `SELECT to_node_id AS node_id
-         FROM memory_links
-         WHERE workspace_id = ? AND from_node_id = ? AND relation_type = 'supersedes'
-         ORDER BY created_at DESC`
-      )
-      .all(workspaceId, node.id) as unknown as Array<{ node_id: string }>;
-    const supersededBy = this.db
-      .prepare(
-        `SELECT from_node_id AS node_id
-         FROM memory_links
-         WHERE workspace_id = ? AND to_node_id = ? AND relation_type = 'supersedes'
-         ORDER BY created_at DESC`
-      )
-      .all(workspaceId, node.id) as unknown as Array<{ node_id: string }>;
+    const supersedes = sqliteAll<{ node_id: string }>(
+      this.db,
+      `SELECT to_node_id AS node_id
+       FROM memory_links
+       WHERE workspace_id = ? AND from_node_id = ? AND relation_type = 'supersedes'
+       ORDER BY created_at DESC`,
+      workspaceId,
+      node.id
+    );
+    const supersededBy = sqliteAll<{ node_id: string }>(
+      this.db,
+      `SELECT from_node_id AS node_id
+       FROM memory_links
+       WHERE workspace_id = ? AND to_node_id = ? AND relation_type = 'supersedes'
+       ORDER BY created_at DESC`,
+      workspaceId,
+      node.id
+    );
     return {
       ...node,
       supersedes: supersedes.map((row) => row.node_id),
@@ -2075,9 +2092,12 @@ export class VeriFS {
 
   listAuditEvents(workspaceId: string, limit = 100): AuditEvent[] {
     this.getWorkspace(workspaceId);
-    return this.db
-      .prepare("SELECT * FROM audit_events WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ?")
-      .all(workspaceId, limit) as unknown as AuditEvent[];
+    return sqliteAll<AuditEvent>(
+      this.db,
+      "SELECT * FROM audit_events WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ?",
+      workspaceId,
+      limit
+    );
   }
 
   recordAuditEvent(workspaceId: string, actor: string, eventType: string, payload: unknown = {}): AuditEvent {
@@ -2087,11 +2107,11 @@ export class VeriFS {
 
   listProtectedPaths(workspaceId: string): Array<{ path_glob: string; rule_type: string }> {
     this.getWorkspace(workspaceId);
-    return this.db
-      .prepare(
-        "SELECT path_glob, rule_type FROM protected_paths WHERE workspace_id = ? ORDER BY path_glob ASC"
-      )
-      .all(workspaceId) as unknown as Array<{ path_glob: string; rule_type: string }>;
+    return sqliteAll<{ path_glob: string; rule_type: string }>(
+      this.db,
+      "SELECT path_glob, rule_type FROM protected_paths WHERE workspace_id = ? ORDER BY path_glob ASC",
+      workspaceId
+    );
   }
 
   addWorkspaceMember(
@@ -2127,23 +2147,23 @@ export class VeriFS {
 
   listWorkspaceMembers(workspaceId: string): TeamMember[] {
     this.getWorkspace(workspaceId);
-    return this.db
-      .prepare(
-        `SELECT workspace_members.id,
-                workspace_members.workspace_id,
-                users.id AS user_id,
-                users.handle,
-                users.display_name,
-                roles.name AS role,
-                workspace_members.created_at,
-                workspace_members.updated_at
-         FROM workspace_members
-         JOIN users ON users.id = workspace_members.user_id
-         JOIN roles ON roles.id = workspace_members.role_id
-         WHERE workspace_members.workspace_id = ?
-         ORDER BY users.handle ASC`
-      )
-      .all(workspaceId) as unknown as TeamMember[];
+    return sqliteAll<TeamMember>(
+      this.db,
+      `SELECT workspace_members.id,
+              workspace_members.workspace_id,
+              users.id AS user_id,
+              users.handle,
+              users.display_name,
+              roles.name AS role,
+              workspace_members.created_at,
+              workspace_members.updated_at
+       FROM workspace_members
+       JOIN users ON users.id = workspace_members.user_id
+       JOIN roles ON roles.id = workspace_members.role_id
+       WHERE workspace_members.workspace_id = ?
+       ORDER BY users.handle ASC`,
+      workspaceId
+    );
   }
 
   setWorkspaceMemberRole(
@@ -2186,9 +2206,12 @@ export class VeriFS {
 
   listSyncEvents(workspaceId: string, limit = 100): SyncEvent[] {
     this.getWorkspace(workspaceId);
-    return this.db
-      .prepare("SELECT * FROM sync_events WHERE workspace_id = ? ORDER BY created_at ASC LIMIT ?")
-      .all(workspaceId, limit) as unknown as SyncEvent[];
+    return sqliteAll<SyncEvent>(
+      this.db,
+      "SELECT * FROM sync_events WHERE workspace_id = ? ORDER BY created_at ASC LIMIT ?",
+      workspaceId,
+      limit
+    );
   }
 
   async syncPush(workspaceId: string, actor = "agent:sync"): Promise<SyncPushResult> {
@@ -2254,9 +2277,11 @@ export class VeriFS {
 
   listConflicts(workspaceId: string): ConflictRecord[] {
     this.getWorkspace(workspaceId);
-    return this.db
-      .prepare("SELECT * FROM conflict_records WHERE workspace_id = ? ORDER BY created_at DESC")
-      .all(workspaceId) as unknown as ConflictRecord[];
+    return sqliteAll<ConflictRecord>(
+      this.db,
+      "SELECT * FROM conflict_records WHERE workspace_id = ? ORDER BY created_at DESC",
+      workspaceId
+    );
   }
 
   async resolveConflict(
@@ -2394,28 +2419,31 @@ export class VeriFS {
 
   getMemoryNodeLinks(workspaceId: string, nodeId: string): MemoryLinkPacket[] {
     this.getMemoryNode(workspaceId, nodeId);
-    const rows = this.db
-      .prepare(
-        `SELECT memory_links.*,
-                other.id AS other_node_id,
-                other.summary AS other_summary,
-                files.path AS other_source_path
-         FROM memory_links
-         JOIN memory_nodes other ON other.id =
-           CASE
-             WHEN memory_links.from_node_id = ? THEN memory_links.to_node_id
-             ELSE memory_links.from_node_id
-           END
-         JOIN files ON files.id = other.source_file_id
-         WHERE memory_links.workspace_id = ?
-           AND (memory_links.from_node_id = ? OR memory_links.to_node_id = ?)
-         ORDER BY memory_links.created_at DESC`
-      )
-      .all(nodeId, workspaceId, nodeId, nodeId) as unknown as Array<MemoryLink & {
+    const rows = sqliteAll<MemoryLink & {
       other_node_id: string;
       other_summary: string;
       other_source_path: string;
-    }>;
+    }>(
+      this.db,
+      `SELECT memory_links.*,
+              other.id AS other_node_id,
+              other.summary AS other_summary,
+              files.path AS other_source_path
+       FROM memory_links
+       JOIN memory_nodes other ON other.id =
+         CASE
+           WHEN memory_links.from_node_id = ? THEN memory_links.to_node_id
+           ELSE memory_links.from_node_id
+         END
+       JOIN files ON files.id = other.source_file_id
+       WHERE memory_links.workspace_id = ?
+         AND (memory_links.from_node_id = ? OR memory_links.to_node_id = ?)
+       ORDER BY memory_links.created_at DESC`,
+      nodeId,
+      workspaceId,
+      nodeId,
+      nodeId
+    );
 
     return rows.map((row) => ({
       id: row.id,
@@ -2482,15 +2510,17 @@ export class VeriFS {
     const nodeLinks = this.getMemoryNodeLinks(workspaceId, nodeId).map((link) =>
       this.memoryLinkPacketToGraphEdgePacket(workspaceId, link, nodeId)
     );
-    const objectEdges = this.db
-      .prepare(
-        `SELECT * FROM memory_graph_edges
-         WHERE workspace_id = ?
-           AND ((from_type IN ('memory_node', 'candidate', 'reasoning_memory') AND from_id = ?)
-             OR (to_type IN ('memory_node', 'candidate', 'reasoning_memory') AND to_id = ?))
-         ORDER BY created_at DESC`
-      )
-      .all(workspaceId, nodeId, nodeId) as unknown as MemoryGraphEdge[];
+    const objectEdges = sqliteAll<MemoryGraphEdge>(
+      this.db,
+      `SELECT * FROM memory_graph_edges
+       WHERE workspace_id = ?
+         AND ((from_type IN ('memory_node', 'candidate', 'reasoning_memory') AND from_id = ?)
+           OR (to_type IN ('memory_node', 'candidate', 'reasoning_memory') AND to_id = ?))
+       ORDER BY created_at DESC`,
+      workspaceId,
+      nodeId,
+      nodeId
+    );
     return [...nodeLinks, ...objectEdges.map((edge) => this.decorateGraphEdge(edge, nodeId))]
       .sort(compareGraphEdges);
   }
@@ -3014,9 +3044,11 @@ export class VeriFS {
 
   listRuns(workspaceId: string): AgentRun[] {
     this.getWorkspace(workspaceId);
-    return this.db
-      .prepare("SELECT * FROM agent_runs WHERE workspace_id = ? ORDER BY created_at DESC")
-      .all(workspaceId) as unknown as AgentRun[];
+    return sqliteAll<AgentRun>(
+      this.db,
+      "SELECT * FROM agent_runs WHERE workspace_id = ? ORDER BY created_at DESC",
+      workspaceId
+    );
   }
 
   getRun(workspaceId: string, runId: string): AgentRun {
@@ -3032,9 +3064,12 @@ export class VeriFS {
 
   listRunEvents(workspaceId: string, runId: string): AgentRunEvent[] {
     this.getRun(workspaceId, runId);
-    return this.db
-      .prepare("SELECT * FROM agent_run_events WHERE workspace_id = ? AND run_id = ? ORDER BY created_at ASC")
-      .all(workspaceId, runId) as unknown as AgentRunEvent[];
+    return sqliteAll<AgentRunEvent>(
+      this.db,
+      "SELECT * FROM agent_run_events WHERE workspace_id = ? AND run_id = ? ORDER BY created_at ASC",
+      workspaceId,
+      runId
+    );
   }
 
   logRunEvent(workspaceId: string, runId: string, eventType: string, payload: unknown): AgentRunEvent {
@@ -3095,9 +3130,12 @@ export class VeriFS {
 
   listRunMemoryUsage(workspaceId: string, runId: string): RunMemoryUsage[] {
     this.getRun(workspaceId, runId);
-    return this.db
-      .prepare("SELECT * FROM run_memory_usages WHERE workspace_id = ? AND run_id = ? ORDER BY created_at ASC")
-      .all(workspaceId, runId) as unknown as RunMemoryUsage[];
+    return sqliteAll<RunMemoryUsage>(
+      this.db,
+      "SELECT * FROM run_memory_usages WHERE workspace_id = ? AND run_id = ? ORDER BY created_at ASC",
+      workspaceId,
+      runId
+    );
   }
 
   async completeRun(
@@ -3311,9 +3349,11 @@ export class VeriFS {
 
   listHandoffs(workspaceId: string): HandoffSummary[] {
     this.getWorkspace(workspaceId);
-    return this.db
-      .prepare("SELECT * FROM handoff_summaries WHERE workspace_id = ? ORDER BY created_at DESC")
-      .all(workspaceId) as unknown as HandoffSummary[];
+    return sqliteAll<HandoffSummary>(
+      this.db,
+      "SELECT * FROM handoff_summaries WHERE workspace_id = ? ORDER BY created_at DESC",
+      workspaceId
+    );
   }
 
   listStaleMemory(workspaceId: string): StaleMemoryCandidate[] {
@@ -3568,9 +3608,11 @@ export class VeriFS {
 
   listPromotions(workspaceId: string): MemoryPromotion[] {
     this.getWorkspace(workspaceId);
-    return this.db
-      .prepare("SELECT * FROM memory_promotions WHERE workspace_id = ? ORDER BY created_at DESC")
-      .all(workspaceId) as unknown as MemoryPromotion[];
+    return sqliteAll<MemoryPromotion>(
+      this.db,
+      "SELECT * FROM memory_promotions WHERE workspace_id = ? ORDER BY created_at DESC",
+      workspaceId
+    );
   }
 
   getPromotion(workspaceId: string, promotionId: string): MemoryPromotion {
@@ -4065,11 +4107,9 @@ export class VeriFS {
     const block = promotionBlock(promotion, proposed);
     let nextContent = block;
     if (promotion.append) {
-      try {
-        const existing = await this.readFile(workspaceId, promotion.target_path);
-        nextContent = `${existing.content.trimEnd()}\n\n${block}`;
-      } catch {
-        nextContent = block;
+      const existing = await this.readFileContentIfExists(workspaceId, promotion.target_path);
+      if (existing) {
+        nextContent = `${existing.trimEnd()}\n\n${block}`;
       }
     }
 
@@ -4133,9 +4173,11 @@ export class VeriFS {
 
   listSnapshots(workspaceId: string): Snapshot[] {
     this.getWorkspace(workspaceId);
-    return this.db
-      .prepare("SELECT * FROM snapshots WHERE workspace_id = ? ORDER BY created_at DESC")
-      .all(workspaceId) as unknown as Snapshot[];
+    return sqliteAll<Snapshot>(
+      this.db,
+      "SELECT * FROM snapshots WHERE workspace_id = ? ORDER BY created_at DESC",
+      workspaceId
+    );
   }
 
   getSnapshot(workspaceId: string, snapshotId: string): Snapshot & { items: SnapshotItem[] } {
@@ -4146,9 +4188,11 @@ export class VeriFS {
     if (!snapshot) {
       throw new VeriFSError("Snapshot not found.", 404);
     }
-    const items = this.db
-      .prepare("SELECT * FROM snapshot_items WHERE snapshot_id = ? ORDER BY item_type, item_id")
-      .all(snapshotId) as unknown as SnapshotItem[];
+    const items = sqliteAll<SnapshotItem>(
+      this.db,
+      "SELECT * FROM snapshot_items WHERE snapshot_id = ? ORDER BY item_type, item_id",
+      snapshotId
+    );
     return { ...snapshot, items };
   }
 
@@ -4204,7 +4248,7 @@ export class VeriFS {
          LEFT JOIN blobs ON blobs.sha256 = memory_nodes.source_blob_sha256
          WHERE memory_nodes.workspace_id = ?`
       )
-      .all(workspaceId) as Array<Record<string, unknown>>;
+      .all(workspaceId) as JsonObject[];
     const total = rows.length;
     const validSourceCount = rows.filter((row) => row.joined_file_id && row.joined_blob_sha256).length;
     const orphanNodeCount = rows.filter((row) => !row.joined_file_id || !row.joined_blob_sha256).length;
@@ -4344,11 +4388,8 @@ export class VeriFS {
   }
 
   private async ensureArchiveReadme(workspaceId: string, actor: string): Promise<void> {
-    try {
-      this.getFileByPath(workspaceId, "/archive/README.md");
+    if (this.tryGetFileByPath(workspaceId, "/archive/README.md")) {
       return;
-    } catch {
-      // Create a small helper file the first time an archive is used.
     }
 
     await this.writeFile(
@@ -4377,7 +4418,7 @@ export class VeriFS {
     archiveType: ArchiveEntryType,
     title: string,
     file: FileRecord,
-    metadata: Record<string, unknown>,
+    metadata: JsonObject,
     actor: string,
     id = randomUUID()
   ): ArchiveEntry {
@@ -4428,7 +4469,7 @@ export class VeriFS {
     file: FileRecord,
     extractedNode: ExtractedMemoryNode,
     actor: string,
-    sourceLocation?: Record<string, unknown>
+    sourceLocation?: SourceLocation
   ): Promise<MemoryNode | null> {
     const summaryEmbedding = await embedText(extractedNode.summary, this.memoryOptions);
     const dedupe = this.classifyDedupe(workspaceId, extractedNode, summaryEmbedding);
@@ -4598,7 +4639,7 @@ export class VeriFS {
       target_path?: string;
       append?: boolean;
       scope: MemoryScopeMetadata;
-      source_location?: Record<string, unknown>;
+      source_location?: SourceLocation;
     }
   ): Promise<CandidateReviewDetection> {
     const targetPath = options.target_path ? normalizeMemoryPath(options.target_path) : null;
@@ -4873,7 +4914,7 @@ export class VeriFS {
     file: FileRecord,
     extractedNode: ExtractedMemoryNode,
     actor: string,
-    sourceLocation?: Record<string, unknown>,
+    sourceLocation?: SourceLocation,
     options: { target_path?: string; append?: boolean; detect_candidate_review?: boolean; scope?: MemoryScopeMetadata } = {}
   ): Promise<MemoryNode> {
     const now = isoNow();
@@ -4962,7 +5003,7 @@ export class VeriFS {
     file: FileRecord,
     extractedNode: ExtractedMemoryNode,
     actor: string,
-    sourceLocation?: Record<string, unknown>
+    sourceLocation?: SourceLocation
   ): Promise<MemoryNode> {
     const now = isoNow();
     const nodeId = randomUUID();
@@ -5084,25 +5125,20 @@ export class VeriFS {
     if (!content.trim()) return;
     const run = this.getRun(workspaceId, runId);
     const artifactPath = `${run.run_path}/${artifactName}`;
-    let existing = "";
-    try {
-      existing = (await this.readFile(workspaceId, artifactPath)).content;
-    } catch {
-      existing = "";
-    }
+    const existing = await this.readFileContentIfExists(workspaceId, artifactPath);
     await this.writeRunArtifact(workspaceId, runId, artifactName, `${existing.trimEnd()}\n${content}`.trimStart());
   }
 
   private async readRunArtifacts(workspaceId: string, run: AgentRun): Promise<Record<string, string>> {
     const artifacts: Record<string, string> = {};
     for (const name of runArtifactNames) {
-      try {
-        artifacts[name] = (await this.readFile(workspaceId, `${run.run_path}/${name}`)).content;
-      } catch {
-        artifacts[name] = "";
-      }
+      artifacts[name] = await this.readFileContentIfExists(workspaceId, `${run.run_path}/${name}`);
     }
     return artifacts;
+  }
+
+  private async readFileContentIfExists(workspaceId: string, filePath: string): Promise<string> {
+    return this.tryGetFileByPath(workspaceId, filePath) ? (await this.readFile(workspaceId, filePath)).content : "";
   }
 
   private nodeHasBeenUsed(nodeId: string): boolean {
@@ -5113,24 +5149,25 @@ export class VeriFS {
   }
 
   private sourceExists(node: MemoryNode): boolean {
-    try {
-      this.getFileByPath(node.workspace_id, node.source_path);
-      this.getBlob(node.source_blob_sha256);
-      return true;
-    } catch {
-      return false;
-    }
+    const file = this.db
+      .prepare("SELECT id FROM files WHERE workspace_id = ? AND path = ?")
+      .get(node.workspace_id, node.source_path) as { id: string } | undefined;
+    const blob = this.db
+      .prepare("SELECT sha256 FROM blobs WHERE sha256 = ?")
+      .get(node.source_blob_sha256) as { sha256: string } | undefined;
+    return Boolean(file && blob);
   }
 
   private pathHasOnlyStaleMemory(workspaceId: string, fileId: string): boolean {
-    const rows = this.db
-      .prepare(
-        `SELECT memory_nodes.*, files.path AS source_path
-         FROM memory_nodes
-         JOIN files ON files.id = memory_nodes.source_file_id
-         WHERE memory_nodes.workspace_id = ? AND memory_nodes.source_file_id = ?`
-      )
-      .all(workspaceId, fileId) as unknown as MemoryNodeRow[];
+    const rows = sqliteAll<MemoryNodeRow>(
+      this.db,
+      `SELECT memory_nodes.*, files.path AS source_path
+       FROM memory_nodes
+       JOIN files ON files.id = memory_nodes.source_file_id
+       WHERE memory_nodes.workspace_id = ? AND memory_nodes.source_file_id = ?`,
+      workspaceId,
+      fileId
+    );
     if (rows.length === 0) return false;
     return rows.map(rowToMemoryNode).every(isStaleLikeMemory);
   }
@@ -5166,16 +5203,18 @@ export class VeriFS {
       }
     }
 
-    const sameSourceRows = this.db
-      .prepare(
-        `SELECT memory_nodes.*, files.path AS source_path
-         FROM memory_nodes
-         JOIN files ON files.id = memory_nodes.source_file_id
-         WHERE memory_nodes.workspace_id = ? AND memory_nodes.source_file_id = ? AND memory_nodes.id != ?
-         ORDER BY memory_nodes.created_at DESC
-         LIMIT 8`
-      )
-      .all(workspaceId, file.id, node.id) as unknown as MemoryNodeRow[];
+    const sameSourceRows = sqliteAll<MemoryNodeRow>(
+      this.db,
+      `SELECT memory_nodes.*, files.path AS source_path
+       FROM memory_nodes
+       JOIN files ON files.id = memory_nodes.source_file_id
+       WHERE memory_nodes.workspace_id = ? AND memory_nodes.source_file_id = ? AND memory_nodes.id != ?
+       ORDER BY memory_nodes.created_at DESC
+       LIMIT 8`,
+      workspaceId,
+      file.id,
+      node.id
+    );
     for (const other of sameSourceRows.map(rowToMemoryNode)) {
       this.linkMemoryNodes(workspaceId, node.id, other.id, "derived_from", {
         confidence: 0.86,
@@ -5348,13 +5387,13 @@ export class VeriFS {
 
   private candidateCreatedBy(workspaceId: string, nodeId: string, promotion: MemoryPromotion | null): string {
     if (promotion?.actor) return promotion.actor;
-    const events = this.db
-      .prepare(
-        `SELECT * FROM audit_events
-         WHERE workspace_id = ? AND event_type IN ('candidate.created', 'memory_candidate_created', 'run_candidate_memory_created')
-         ORDER BY created_at ASC`
-      )
-      .all(workspaceId) as unknown as AuditEvent[];
+    const events = sqliteAll<AuditEvent>(
+      this.db,
+      `SELECT * FROM audit_events
+       WHERE workspace_id = ? AND event_type IN ('candidate.created', 'memory_candidate_created', 'run_candidate_memory_created')
+       ORDER BY created_at ASC`,
+      workspaceId
+    );
     for (const event of events) {
       const payload = parseMaybeObject(event.payload_json);
       if (payload?.node_id === nodeId) return event.actor;
@@ -5610,31 +5649,39 @@ export class VeriFS {
       });
     };
 
-    const files = this.db.prepare("SELECT * FROM files WHERE workspace_id = ?").all(workspaceId) as unknown as FileRecord[];
+    const files = sqliteAll<FileRecord>(this.db, "SELECT * FROM files WHERE workspace_id = ?", workspaceId);
     for (const file of files) push("file", file.id, file);
 
-    const extractedSources = this.db
-      .prepare("SELECT * FROM extracted_sources WHERE workspace_id = ?")
-      .all(workspaceId) as unknown as ExtractedSource[];
+    const extractedSources = sqliteAll<ExtractedSource>(
+      this.db,
+      "SELECT * FROM extracted_sources WHERE workspace_id = ?",
+      workspaceId
+    );
     for (const source of extractedSources) push("extracted_source", source.id, source);
 
-    const fileArtifacts = this.db
-      .prepare("SELECT * FROM file_artifacts WHERE workspace_id = ?")
-      .all(workspaceId) as unknown as FileArtifact[];
+    const fileArtifacts = sqliteAll<FileArtifact>(
+      this.db,
+      "SELECT * FROM file_artifacts WHERE workspace_id = ?",
+      workspaceId
+    );
     for (const artifact of fileArtifacts) push("file_artifact", artifact.id, artifact);
 
-    const nodes = this.db.prepare("SELECT * FROM memory_nodes WHERE workspace_id = ?").all(workspaceId) as unknown as MemoryNodeRow[];
+    const nodes = sqliteAll<MemoryNodeRow>(this.db, "SELECT * FROM memory_nodes WHERE workspace_id = ?", workspaceId);
     for (const node of nodes) push("memory_node", node.id, node);
 
-    const links = this.db.prepare("SELECT * FROM memory_links WHERE workspace_id = ?").all(workspaceId) as unknown as MemoryLink[];
+    const links = sqliteAll<MemoryLink>(this.db, "SELECT * FROM memory_links WHERE workspace_id = ?", workspaceId);
     for (const link of links) push("memory_link", link.id, link);
 
-    const graphEdges = this.db.prepare("SELECT * FROM memory_graph_edges WHERE workspace_id = ?").all(workspaceId) as unknown as MemoryGraphEdge[];
+    const graphEdges = sqliteAll<MemoryGraphEdge>(
+      this.db,
+      "SELECT * FROM memory_graph_edges WHERE workspace_id = ?",
+      workspaceId
+    );
     for (const edge of graphEdges) push("memory_graph_edge", edge.id, edge);
 
     const protectedPaths = this.db
       .prepare("SELECT * FROM protected_paths WHERE workspace_id = ?")
-      .all(workspaceId) as Array<Record<string, unknown> & { id: string }>;
+      .all(workspaceId) as Array<JsonObject & { id: string }>;
     for (const protectedPath of protectedPaths) push("protected_path", protectedPath.id, protectedPath);
 
     const blobHashes = new Set<string>();
@@ -5846,9 +5893,11 @@ export class VeriFS {
   }
 
   private getNodeEmbeddings(nodeId: string): Record<string, number[]> {
-    const rows = this.db
-      .prepare("SELECT embedding_type, embedding_json FROM memory_embeddings WHERE memory_node_id = ?")
-      .all(nodeId) as unknown as EmbeddingRow[];
+    const rows = sqliteAll<EmbeddingRow>(
+      this.db,
+      "SELECT embedding_type, embedding_json FROM memory_embeddings WHERE memory_node_id = ?",
+      nodeId
+    );
     return Object.fromEntries(
       rows.map((row) => {
         try {
@@ -5940,23 +5989,24 @@ export class VeriFS {
   }
 
   private linksByRelation(workspaceId: string, relationType: MemoryRelationType): MemoryLinkPacket[] {
-    const rows = this.db
-      .prepare(
-        `SELECT memory_links.*,
-                memory_links.to_node_id AS other_node_id,
-                other.summary AS other_summary,
-                files.path AS other_source_path
-         FROM memory_links
-         JOIN memory_nodes other ON other.id = memory_links.to_node_id
-         JOIN files ON files.id = other.source_file_id
-         WHERE memory_links.workspace_id = ? AND memory_links.relation_type = ?
-         ORDER BY memory_links.created_at DESC`
-      )
-      .all(workspaceId, relationType) as unknown as Array<MemoryLink & {
+    const rows = sqliteAll<MemoryLink & {
       other_node_id: string;
       other_summary: string;
       other_source_path: string;
-    }>;
+    }>(
+      this.db,
+      `SELECT memory_links.*,
+              memory_links.to_node_id AS other_node_id,
+              other.summary AS other_summary,
+              files.path AS other_source_path
+       FROM memory_links
+       JOIN memory_nodes other ON other.id = memory_links.to_node_id
+       JOIN files ON files.id = other.source_file_id
+       WHERE memory_links.workspace_id = ? AND memory_links.relation_type = ?
+       ORDER BY memory_links.created_at DESC`,
+      workspaceId,
+      relationType
+    );
 
     return rows.map((row) => ({
       id: row.id,
@@ -6109,7 +6159,7 @@ export class VeriFS {
     file: FileRecord;
     blob: BlobRecord;
     source: ExtractedSource;
-    document: { text: string; sections: ExtractedSection[]; metadata: Record<string, unknown> };
+    document: { text: string; sections: ExtractedSection[]; metadata: JsonObject };
     extractor: { name: string; version: string };
   }> {
     const file = this.getFileByPath(workspaceId, normalizedPath);
@@ -6131,7 +6181,7 @@ export class VeriFS {
     blob: BlobRecord,
     extractorName: string,
     extractorVersion: string,
-    document: { text: string; sections: ExtractedSection[]; metadata: Record<string, unknown> }
+    document: { text: string; sections: ExtractedSection[]; metadata: JsonObject }
   ): ExtractedSource {
     this.db
       .prepare(
@@ -6207,7 +6257,7 @@ export class VeriFS {
   }
 
   private sourceInfoForNode(node: MemoryNode): {
-    source_location: Record<string, unknown> | null;
+    source_location: SourceLocation | null;
     source_kind: string | null;
     extractor_name: string | null;
   } {
@@ -6323,11 +6373,10 @@ export class VeriFS {
   }
 
   private tryGetFileByPath(workspaceId: string, inputPath: string): FileRecord | null {
-    try {
-      return this.getFileByPath(workspaceId, inputPath);
-    } catch {
-      return null;
-    }
+    const normalizedPath = normalizeMemoryPath(inputPath);
+    return (this.db
+      .prepare("SELECT * FROM files WHERE workspace_id = ? AND path = ?")
+      .get(workspaceId, normalizedPath) as FileRecord | undefined) ?? null;
   }
 
   private getFileById(workspaceId: string, fileId: string): FileRecord {
@@ -6820,28 +6869,12 @@ function sourceSections(document: { text: string; sections: ExtractedSection[] }
     : [];
 }
 
-function parseSourceLocation(sourceLocationJson: string | null | undefined): Record<string, unknown> | null {
-  if (!sourceLocationJson) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(sourceLocationJson) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
+function parseSourceLocation(sourceLocationJson: string | null | undefined): SourceLocation | null {
+  return parseJsonObject(sourceLocationJson);
 }
 
-function parseMaybeObject(text: string | null | undefined): Record<string, unknown> | null {
-  if (!text) return null;
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
+function parseMaybeObject(text: string | null | undefined): JsonObject | null {
+  return parseJsonObject(text);
 }
 
 function sourceKindForNode(node: MemoryNode, file: FileRecord): string | null {
@@ -7289,29 +7322,25 @@ function reasoningMemoryFromNode(node: MemoryNode): ExtractedReasoningMemory | n
   const sourceLocation = parseSourceLocation(node.source_location_json);
   const value = sourceLocation?.reasoning_memory;
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const candidate = value as Record<string, unknown>;
+  const candidate = value as JsonObject;
   if (candidate.type !== "reasoning_memory") return null;
-  try {
-    return {
-      type: "reasoning_memory",
-      title: stringField(candidate.title, node.summary),
-      trigger: stringField(candidate.trigger, node.trigger),
-      context: stringField(candidate.context, node.detail ?? node.summary),
-      strategy: stringField(candidate.strategy, node.detail ?? node.summary),
-      failure_pattern: stringField(candidate.failure_pattern, ""),
-      success_pattern: stringField(candidate.success_pattern, ""),
-      applies_to: stringArrayField(candidate.applies_to),
-      preconditions: stringArrayField(candidate.preconditions),
-      anti_patterns: stringArrayField(candidate.anti_patterns),
-      source_run: stringField(candidate.source_run, runPathFromSourcePath(node.source_path)),
-      source_refs: stringArrayField(candidate.source_refs),
-      confidence: typeof candidate.confidence === "number" ? candidate.confidence : node.confidence,
-      status: "candidate",
-      reason: stringField(candidate.reason, "Derived from run artifacts.")
-    };
-  } catch {
-    return null;
-  }
+  return {
+    type: "reasoning_memory",
+    title: stringField(candidate.title, node.summary),
+    trigger: stringField(candidate.trigger, node.trigger),
+    context: stringField(candidate.context, node.detail ?? node.summary),
+    strategy: stringField(candidate.strategy, node.detail ?? node.summary),
+    failure_pattern: stringField(candidate.failure_pattern, ""),
+    success_pattern: stringField(candidate.success_pattern, ""),
+    applies_to: stringArrayField(candidate.applies_to),
+    preconditions: stringArrayField(candidate.preconditions),
+    anti_patterns: stringArrayField(candidate.anti_patterns),
+    source_run: stringField(candidate.source_run, runPathFromSourcePath(node.source_path)),
+    source_refs: stringArrayField(candidate.source_refs),
+    confidence: typeof candidate.confidence === "number" ? candidate.confidence : node.confidence,
+    status: "candidate",
+    reason: stringField(candidate.reason, "Derived from run artifacts.")
+  };
 }
 
 function fallbackReasoningMemoryFromNode(node: MemoryNode): ExtractedReasoningMemory {
@@ -7793,21 +7822,17 @@ function scopeMetadataFromCandidateInput(
   request: ProposeMemoryCandidateInput,
   fallback: MemoryScopeMetadata
 ): MemoryScopeMetadata {
-  const scope = request.scope ?? fallback.scope;
-  return {
-    scope,
-    project_id: scope === "project" ? request.project_id ?? fallback.project_id : null,
-    project_slug: scope === "project" ? request.project_slug ?? fallback.project_slug : null,
-    repo_id: scope === "repo" ? request.repo_id ?? fallback.repo_id : null,
-    repo_path: scope === "repo" ? request.repo_path ?? fallback.repo_path : null,
-    session_id: scope === "session" ? request.session_id ?? fallback.session_id : null,
-    agent_id: scope === "agent" ? request.agent_id ?? fallback.agent_id : null,
-    contact_id: scope === "contact" ? request.contact_id ?? fallback.contact_id : null,
-    run_id: scope === "run" ? request.run_id ?? fallback.run_id : null
-  };
+  return scopedMemoryMetadata(request, fallback);
 }
 
 function scopeMetadataFromCandidateUpdate(request: UpdateMemoryCandidateInput, fallback: MemoryNode): MemoryScopeMetadata {
+  return scopedMemoryMetadata(request, fallback);
+}
+
+function scopedMemoryMetadata(
+  request: Partial<MemoryScopeMetadata>,
+  fallback: MemoryScopeMetadata
+): MemoryScopeMetadata {
   const scope = request.scope ?? fallback.scope;
   return {
     scope,
@@ -8046,26 +8071,29 @@ function bestSourceLocation(
   metadataJson: string,
   content: string,
   query: string
-): Record<string, unknown> | null {
+): SourceLocation | null {
   const metadata = safeParseObject(metadataJson);
   const sections = Array.isArray(metadata.sections) ? metadata.sections : [];
   const line = lineNumberForText(content, query);
   if (line) {
     const matching = sections.find((section) => {
-      const location = asPlainObject(asPlainObject(section).sourceLocation);
+      const sectionObject = asPlainObject(section);
+      const location = asPlainObject(sectionObject?.sourceLocation);
+      if (!location) return false;
       const start = numericField(location, "start_line");
       const end = numericField(location, "end_line") ?? start;
       return start !== null && end !== null && line >= start && line <= end;
     });
-    const location = asPlainObject(asPlainObject(matching).sourceLocation);
+    const matchingObject = asPlainObject(matching);
+    const location = asPlainObject(matchingObject?.sourceLocation);
     if (location) return location;
   }
 
-  const firstLocation = asPlainObject(asPlainObject(sections[0]).sourceLocation);
-  return firstLocation ?? null;
+  const firstSection = asPlainObject(sections[0]);
+  return asPlainObject(firstSection?.sourceLocation);
 }
 
-function sourceLine(location: Record<string, unknown> | null | undefined): number | null {
+function sourceLine(location: SourceLocation | null | undefined): number | null {
   if (!location) return null;
   return (
     numericField(location, "start_line") ??
@@ -8075,21 +8103,26 @@ function sourceLine(location: Record<string, unknown> | null | undefined): numbe
   );
 }
 
-function numericField(object: Record<string, unknown>, key: string): number | null {
+function numericField(object: JsonObject, key: string): number | null {
   const value = object[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function asPlainObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-function safeParseObject(text: string): Record<string, unknown> {
+function parseJsonObject(text: string | null | undefined): JsonObject | null {
+  if (!text) return null;
   try {
     return asPlainObject(JSON.parse(text));
   } catch {
-    return {};
+    return null;
   }
+}
+
+function asPlainObject(value: unknown): JsonObject | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : null;
+}
+
+function safeParseObject(text: string): JsonObject {
+  return parseJsonObject(text) ?? {};
 }
 
 function snippetAround(text: string, query: string, maxLength = 220): string {

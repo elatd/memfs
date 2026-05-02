@@ -1,3 +1,16 @@
+import {
+  parseJsonBoundary,
+  optionalPositiveInteger,
+  optionalString,
+  requiredArray,
+  requiredBoolean,
+  requiredConfidence,
+  requiredEnum,
+  requiredObject,
+  requiredString,
+  requiredStringArray
+} from "../validation.js";
+
 export const CURATION_SCHEMA_VERSION = "memory-curation.v1" as const;
 
 export const curationMemoryTypes = [
@@ -381,13 +394,7 @@ export function buildDedupeConflictJudgmentPrompt(input: {
 }
 
 export function validateCuratorResponseJson(jsonText: string, options: CurationSafetyOptions = {}): CuratorResponse {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch (error) {
-    throw new Error(`Curator response did not return valid JSON: ${(error as Error).message}`);
-  }
-  return validateCuratorResponse(parsed, options);
+  return validateCuratorResponse(parseJsonBoundary(jsonText, "Curator response"), options);
 }
 
 export function validateCuratorResponse(value: unknown, options: CurationSafetyOptions = {}): CuratorResponse {
@@ -405,7 +412,7 @@ export function validateCuratorResponse(value: unknown, options: CurationSafetyO
     : requiredArray(response.reasoning_memories, "reasoning_memories").map((candidate, index) =>
       validateReasoningMemoryCandidate(candidate, index, options)
     );
-  const notes = response.notes === undefined ? undefined : requiredStringArray(response.notes, "notes", 0, 20);
+  const notes = response.notes === undefined ? undefined : requiredStringArray(response.notes, "notes", { maxItems: 20 });
 
   return {
     schema_version: CURATION_SCHEMA_VERSION,
@@ -416,13 +423,7 @@ export function validateCuratorResponse(value: unknown, options: CurationSafetyO
 }
 
 export function validateVerifierResponseJson(jsonText: string): VerifierResponse {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch (error) {
-    throw new Error(`Verifier response did not return valid JSON: ${(error as Error).message}`);
-  }
-  return validateVerifierResponse(parsed);
+  return validateVerifierResponse(parseJsonBoundary(jsonText, "Verifier response"));
 }
 
 export function validateVerifierResponse(value: unknown): VerifierResponse {
@@ -435,7 +436,7 @@ export function validateVerifierResponse(value: unknown): VerifierResponse {
   const riskFlags = normalizeRiskFlags(requiredArray(response.risk_flags, "risk_flags"), "risk_flags");
   const requiresReview = requiredBoolean(response.requires_review, "requires_review");
   const confidence = requiredConfidence(response.confidence, "confidence");
-  const reasons = requiredStringArray(response.reasons, "reasons", 0, 20);
+  const reasons = requiredStringArray(response.reasons, "reasons", { maxItems: 20 });
   if (reasons.length === 0) throw new Error("VerifierResponse reasons must contain at least one value.");
   const safeToPromote = requiredBoolean(response.safe_to_promote, "safe_to_promote");
   const suggestedStatus = response.suggested_status === undefined
@@ -474,11 +475,17 @@ export function validateMemoryCandidate(
     throw new Error(`candidates[${index}].source_refs must contain at least one source reference.`);
   }
 
+  const summary = optionalString(candidate.summary, `candidates[${index}].summary`);
+  const trigger = optionalString(candidate.trigger, `candidates[${index}].trigger`);
+  const detail = optionalString(candidate.detail, `candidates[${index}].detail`);
+  const promotionTargetPath = optionalString(candidate.promotion_target_path, `candidates[${index}].promotion_target_path`);
+  const createdBy = optionalString(candidate.created_by, `candidates[${index}].created_by`);
+
   const normalized: MemoryCandidate = {
     memory_text: requiredString(candidate.memory_text, `candidates[${index}].memory_text`),
-    ...(optionalString(candidate.summary, `candidates[${index}].summary`) ? { summary: optionalString(candidate.summary, `candidates[${index}].summary`) } : {}),
-    ...(optionalString(candidate.trigger, `candidates[${index}].trigger`) ? { trigger: optionalString(candidate.trigger, `candidates[${index}].trigger`) } : {}),
-    ...(optionalString(candidate.detail, `candidates[${index}].detail`) ? { detail: optionalString(candidate.detail, `candidates[${index}].detail`) } : {}),
+    ...(summary !== undefined ? { summary } : {}),
+    ...(trigger !== undefined ? { trigger } : {}),
+    ...(detail !== undefined ? { detail } : {}),
     type: requiredEnum(candidate.type, `candidates[${index}].type`, curationMemoryTypes),
     scope: requiredEnum(candidate.scope, `candidates[${index}].scope`, memoryScopes),
     source_refs: sourceRefs,
@@ -487,8 +494,8 @@ export function validateMemoryCandidate(
     status: requiredEnum(candidate.status, `candidates[${index}].status`, memoryCandidateStatuses),
     requires_review: requiredBoolean(candidate.requires_review, `candidates[${index}].requires_review`),
     reason: requiredString(candidate.reason, `candidates[${index}].reason`),
-    ...(optionalString(candidate.promotion_target_path, `candidates[${index}].promotion_target_path`) ? { promotion_target_path: optionalString(candidate.promotion_target_path, `candidates[${index}].promotion_target_path`) } : {}),
-    ...(optionalString(candidate.created_by, `candidates[${index}].created_by`) ? { created_by: optionalString(candidate.created_by, `candidates[${index}].created_by`) } : {})
+    ...(promotionTargetPath !== undefined ? { promotion_target_path: promotionTargetPath } : {}),
+    ...(createdBy !== undefined ? { created_by: createdBy } : {})
   };
 
   return applyDeterministicSafety(normalized, options);
@@ -508,7 +515,7 @@ export function validateReasoningMemoryCandidate(
   }
 
   const sourceRun = requiredString(candidate.source_run, `reasoning_memories[${index}].source_run`);
-  const sourceRefs = requiredStringArray(candidate.source_refs, `reasoning_memories[${index}].source_refs`, index, 20);
+  const sourceRefs = requiredStringArray(candidate.source_refs, `reasoning_memories[${index}].source_refs`, { maxItems: 20 });
   if (sourceRefs.length === 0) {
     throw new Error(`reasoning_memories[${index}].source_refs must contain at least one source reference.`);
   }
@@ -524,9 +531,9 @@ export function validateReasoningMemoryCandidate(
     strategy: requiredString(candidate.strategy, `reasoning_memories[${index}].strategy`),
     failure_pattern: requiredString(candidate.failure_pattern, `reasoning_memories[${index}].failure_pattern`),
     success_pattern: requiredString(candidate.success_pattern, `reasoning_memories[${index}].success_pattern`),
-    applies_to: requiredStringArray(candidate.applies_to, `reasoning_memories[${index}].applies_to`, index, 12),
-    preconditions: requiredStringArray(candidate.preconditions, `reasoning_memories[${index}].preconditions`, index, 12),
-    anti_patterns: requiredStringArray(candidate.anti_patterns, `reasoning_memories[${index}].anti_patterns`, index, 12),
+    applies_to: requiredStringArray(candidate.applies_to, `reasoning_memories[${index}].applies_to`, { maxItems: 12 }),
+    preconditions: requiredStringArray(candidate.preconditions, `reasoning_memories[${index}].preconditions`, { maxItems: 12 }),
+    anti_patterns: requiredStringArray(candidate.anti_patterns, `reasoning_memories[${index}].anti_patterns`, { maxItems: 12 }),
     source_run: sourceRun,
     source_refs: sourceRefs,
     confidence: requiredConfidence(candidate.confidence, `reasoning_memories[${index}].confidence`),
@@ -670,11 +677,15 @@ function firstSourceKind(sourceRefs: MemoryCandidateSourceRef[]): CandidateSourc
 
 function validateSourceRef(value: unknown, path: string): MemoryCandidateSourceRef {
   const sourceRef = requiredObject(value, path);
+  const sourcePath = optionalString(sourceRef.source_path, `${path}.source_path`);
+  const rawRef = optionalString(sourceRef.raw_ref, `${path}.raw_ref`);
+  const line = optionalPositiveInteger(sourceRef.line, `${path}.line`);
+  const excerpt = optionalString(sourceRef.excerpt, `${path}.excerpt`);
   const normalized: MemoryCandidateSourceRef = {
-    ...(optionalString(sourceRef.source_path, `${path}.source_path`) ? { source_path: optionalString(sourceRef.source_path, `${path}.source_path`) } : {}),
-    ...(optionalString(sourceRef.raw_ref, `${path}.raw_ref`) ? { raw_ref: optionalString(sourceRef.raw_ref, `${path}.raw_ref`) } : {}),
-    ...(optionalInteger(sourceRef.line, `${path}.line`) ? { line: optionalInteger(sourceRef.line, `${path}.line`) } : {}),
-    ...(optionalString(sourceRef.excerpt, `${path}.excerpt`) ? { excerpt: optionalString(sourceRef.excerpt, `${path}.excerpt`) } : {}),
+    ...(sourcePath !== undefined ? { source_path: sourcePath } : {}),
+    ...(rawRef !== undefined ? { raw_ref: rawRef } : {}),
+    ...(line !== undefined ? { line } : {}),
+    ...(excerpt !== undefined ? { excerpt } : {}),
     ...(sourceRef.source_kind === undefined ? {} : { source_kind: requiredEnum(sourceRef.source_kind, `${path}.source_kind`, candidateSourceKinds) })
   };
   if (!normalized.source_path && !normalized.raw_ref && !normalized.excerpt) {
@@ -705,76 +716,4 @@ function formatRunArtifacts(runPath: string, artifacts: Record<string, string>):
 
 function schemaBlock(schema: JsonSchema): string {
   return `JSON schema:\n${JSON.stringify(schema, null, 2)}`;
-}
-
-function requiredObject(value: unknown, path: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${path} must be an object.`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function requiredArray(value: unknown, path: string): unknown[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`${path} must be an array.`);
-  }
-  return value;
-}
-
-function requiredString(value: unknown, path: string): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`${path} must be a non-empty string.`);
-  }
-  return value.trim();
-}
-
-function optionalString(value: unknown, path: string): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`${path} must be a non-empty string when provided.`);
-  }
-  return value.trim();
-}
-
-function requiredBoolean(value: unknown, path: string): boolean {
-  if (typeof value !== "boolean") {
-    throw new Error(`${path} must be a boolean.`);
-  }
-  return value;
-}
-
-function requiredConfidence(value: unknown, path: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
-    throw new Error(`${path} must be a number from 0 to 1.`);
-  }
-  return value;
-}
-
-function optionalInteger(value: unknown, path: string): number | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-    throw new Error(`${path} must be a positive integer when provided.`);
-  }
-  return value;
-}
-
-function requiredStringArray(value: unknown, path: string, index: number, maxItems: number): string[] {
-  const values = requiredArray(value, path).map((item, itemIndex) => {
-    if (typeof item !== "string" || !item.trim()) {
-      throw new Error(`${path}[${itemIndex}] must be a non-empty string.`);
-    }
-    return item.trim();
-  });
-  if (values.length > maxItems) {
-    throw new Error(`${path} must contain at most ${maxItems} values.`);
-  }
-  void index;
-  return [...new Set(values)];
-}
-
-function requiredEnum<T extends readonly string[]>(value: unknown, path: string, values: T): T[number] {
-  if (typeof value !== "string" || !values.includes(value)) {
-    throw new Error(`${path} must be one of ${values.join(", ")}.`);
-  }
-  return value as T[number];
 }
