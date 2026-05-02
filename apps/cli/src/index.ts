@@ -1,17 +1,51 @@
 #!/usr/bin/env node
 import {
   memoryGraphObjectTypes,
+  memoryTypes,
   memoryRelationTypes,
   memoryScopes,
   memoryTrustLevels,
   parseStringUnion,
-  type BriefResponse as CoreBriefResponse,
+} from "@verifs/core";
+import {
+  VeriFSClient,
+  VeriFSNotFoundError,
+  type AgentRun,
+  type ArchiveEntry,
+  type ArchiveEntryType,
+  type ArchiveExtractResponse,
+  type CandidateConflictResolutionMode,
+  type ClientCandidateOptions,
+  type ClientCandidateUpdateOptions,
+  type ClientGraphRelatedOptions,
+  type ConflictRecord,
+  type ConflictResolutionMode,
+  type DeleteGraphEdgePacket as DeleteGraphEdgeResponse,
+  type ExtractedSource,
+  type MemoryCandidate,
+  type MemoryCandidateStatus,
+  type MemoryGraphEdgePacket as MemoryGraphEdge,
+  type MemoryGraphNodeResponse,
   type MemoryGraphObjectType,
+  type MemoryGrepMode,
+  type MemoryGrepResponse,
+  type MemoryHealthReport as MemoryHealth,
+  type MemoryNode,
   type MemoryRelationType,
   type MemoryScope,
-  type MemoryTrustLevel
-} from "@verifs/core";
-import { VeriFSClient, VeriFSNotFoundError } from "@verifs/sdk";
+  type MemoryTrustLevel,
+  type MemoryType,
+  type RawMemoryPacket,
+  type RecallResponse,
+  type ReasoningMemoryCandidate,
+  type RelatedMemoryResult,
+  type RelationshipPathResponse,
+  type Snapshot as SnapshotRecord,
+  type SyncStatus,
+  type TeamMember,
+  type TeamRole,
+  type MemoryPromotion
+} from "@verifs/sdk";
 import { listMountRegistry, runMountd, unmountMount, type MountRegistryEntry } from "@verifs/mountd";
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -42,307 +76,12 @@ interface ParsedArgs {
   dryRun: boolean;
 }
 
-interface Workspace {
-  id: string;
-  name: string;
-}
-
-interface FileRecord {
-  id: string;
-  path: string;
-  size_bytes: number;
-  updated_at: string;
-}
-
-interface FileReadResponse {
-  file: FileRecord;
-  content: string;
-}
-
-interface RecallResponse {
-  query: string;
-  results: RecallResult[];
-}
-
-interface RecallResult {
-  node_id: string;
-  summary: string;
-  trigger: string;
-  detail?: string | null;
-  tags: string[];
-  memory_type: string;
-  importance: number;
-  confidence: number;
-  score: number;
-  source_path: string;
-  raw_ref: string;
-  raw_excerpt?: string | null;
-  raw_content?: string | null;
-  scope?: string;
-  project_slug?: string | null;
-  repo_path?: string | null;
-  session_id?: string | null;
-  agent_id?: string | null;
-  contact_id?: string | null;
-  run_id?: string | null;
-}
-
-interface MemoryGraphEdge {
-  id: string;
-  edge_kind: "memory_link" | "graph_edge";
-  workspace_id: string;
-  from_type: string;
-  from_id: string;
-  to_type: string;
-  to_id: string;
-  relation_type: string;
-  confidence: number;
-  reason: string;
-  source_ref: string | null;
-  created_at: string;
-  direction?: "outgoing" | "incoming";
-  other_type?: string;
-  other_id?: string;
-  from_summary?: string | null;
-  to_summary?: string | null;
-  from_source_path?: string | null;
-  to_source_path?: string | null;
-}
-
-interface MemoryGraphNodeResponse {
-  node: MemoryNode;
-  edges: MemoryGraphEdge[];
-}
-
-interface RelatedMemoryResult {
-  node: MemoryNode;
-  depth: number;
-  score: number;
-  path: MemoryGraphEdge[];
-}
-
-interface RelationshipPathResponse {
-  from_node: MemoryNode;
-  to_node: MemoryNode;
-  found: boolean;
-  path: MemoryGraphEdge[];
-  explanation: string;
-}
-
-interface DeleteGraphEdgeResponse {
-  deleted: boolean;
-  edge: MemoryGraphEdge;
-}
-
-interface MemoryGrepResponse {
-  query: string;
-  mode: "literal" | "semantic" | "hybrid";
-  workspace_id: string;
-  results: MemoryGrepResult[];
-}
-
-interface MemoryGrepResult {
-  path: string;
-  source_path: string;
-  raw_ref: string | null;
-  line: number | null;
-  snippet: string;
-  score: number;
-  trust: string | null;
-  scope?: string;
-  project_slug?: string | null;
-  repo_path?: string | null;
-  session_id?: string | null;
-  agent_id?: string | null;
-  contact_id?: string | null;
-  run_id?: string | null;
-  node_id: string | null;
-  match_type: string;
-}
-
-interface ArchiveEntry {
-  id: string;
-  archive_type: string;
-  title: string;
-  path: string;
-  raw_ref: string;
-  created_at: string;
-}
-
-interface ArchiveReadResponse {
-  entry: ArchiveEntry;
-  content: string;
-}
-
-interface ArchiveExtractResponse {
-  archive: ArchiveEntry;
-  candidate_nodes: MemoryNode[];
-  summary: string;
-}
-
-interface MemoryNode {
-  id: string;
-  summary: string;
-  trigger: string;
-  detail: string | null;
-  tags: string[];
-  memory_type: string;
-  importance: number;
-  confidence: number;
-  source_path: string;
-  raw_ref: string;
-  source_location_json?: string | null;
-  trust_level?: string;
-  status?: string;
-  valid_from?: string | null;
-  valid_until?: string | null;
-  last_confirmed_at?: string | null;
-  last_used_at?: string | null;
-  supersedes?: string[];
-  superseded_by?: string[];
-  stale_reason?: string | null;
-  scope?: string;
-  project_id?: string | null;
-  project_slug?: string | null;
-  repo_id?: string | null;
-  repo_path?: string | null;
-  session_id?: string | null;
-  agent_id?: string | null;
-  contact_id?: string | null;
-  run_id?: string | null;
-}
-
-interface ExtractedSource {
-  id: string;
-  extractor_name: string;
-  extractor_version: string;
-  content_text: string;
-  metadata_json: string;
-  created_at: string;
-}
-
-interface AuditEvent {
-  id: string;
-  actor: string;
-  event_type: string;
-  payload_json: string;
-  created_at: string;
-}
-
-interface MemoryPromotion {
-  id: string;
-  source_path: string;
-  target_path: string;
-  status: string;
-  actor: string;
-  reviewer: string | null;
-  reason: string | null;
-  candidate_node_id: string | null;
-  created_at: string;
-}
-
-interface MemoryCandidate {
-  id: string;
-  node_id: string;
-  memory_text: string;
-  type: string;
-  scope: string;
-  source_refs: Array<{ source_path: string; raw_ref: string; source_location?: Record<string, unknown> | null }>;
-  confidence: number;
-  risk_flags: string[];
-  status: string;
-  duplicate_of: string | null;
-  conflicts_with: string[];
-  conflict_reason: string | null;
-  created_by: string;
-  created_at: string;
-  reviewed_by: string | null;
-  reviewed_at: string | null;
-  promotion_id: string | null;
-  promotion_target_path: string | null;
-  reason: string | null;
-  node: MemoryNode;
-}
-
-interface ReasoningMemoryCandidate {
-  id: string;
-  node_id: string;
-  type: "reasoning_memory";
-  title: string;
-  trigger: string;
-  context: string;
-  strategy: string;
-  failure_pattern: string;
-  success_pattern: string;
-  applies_to: string[];
-  preconditions: string[];
-  anti_patterns: string[];
-  source_run: string;
-  source_refs: Array<{ path: string; raw_ref: string | null }>;
-  confidence: number;
-  status: string;
-  reason: string;
-}
-
-interface SnapshotRecord {
-  id: string;
-  name: string;
-  description: string | null;
-  created_by: string;
-  created_at: string;
-}
-
-interface MemoryHealth {
-  overall_score: number;
-  source_coverage: number;
-  contradiction_count: number;
-  unresolved_promotion_count: number;
-  orphan_node_count: number;
-  raw_missing_count: number;
-  low_confidence_count: number;
-  rejected_node_count: number;
-  stale_node_count: number;
-  old_node_count?: number;
-  unconfirmed_node_count?: number;
-  superseded_node_count?: number;
-  conflicted_node_count?: number;
-}
-
-interface SyncStatus {
-  mode: string;
-  enabled: boolean;
-  pending_events: number;
-  unresolved_conflicts: number;
-  object_storage: { configured: boolean; bucket: string | null };
-}
-
-interface ConflictRecord {
-  id: string;
-  object_type: string;
-  object_id: string;
-  conflict_type: string;
-  status: string;
-  created_at: string;
-}
-
-interface TeamMember {
-  handle: string;
-  role: string;
-  display_name: string | null;
-}
-
-interface AgentRun {
-  id: string;
-  title: string;
-  task: string;
-  actor: string;
-  status: string;
-  run_path: string;
-  created_at: string;
-  completed_at: string | null;
-}
-
-type BriefResponse = CoreBriefResponse;
+const candidateStatuses = ["observed", "candidate", "duplicate", "approved", "rejected", "superseded", "stale", "conflicted"] as const;
+const editableCandidateStatuses = ["observed", "candidate", "duplicate", "superseded", "stale", "conflicted"] as const;
+const archiveEntryTypes = ["conversation", "transcript", "imported", "agent-run", "raw"] as const;
+const conflictResolutionModes = ["keep_local", "keep_remote", "manual_merge", "keep_both"] as const;
+const candidateConflictResolutionModes = ["keep_new", "keep_old", "keep_both", "mark_superseded"] as const;
+const teamRoles = ["owner", "admin", "editor", "agent", "viewer"] as const;
 
 const defaultApiUrl = "http://localhost:3131";
 
@@ -379,7 +118,7 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
       case "ls":
         return await withWorkspace(env, async (workspaceId) => {
           const prefix = subcommand ?? "/";
-          const files = (await client.listFiles(workspaceId)) as FileRecord[];
+          const files = await client.listFiles(workspaceId);
           const filtered = files.filter(
             (file) => prefix === "/" || file.path === prefix || file.path.startsWith(`${prefix.replace(/\/$/, "")}/`)
           );
@@ -387,10 +126,10 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
         });
       case "cat":
         return await withWorkspace(env, async (workspaceId) => {
-          const response = (await client.readFile(
+          const response = await client.readFile(
             workspaceId,
             required(subcommand, "verifs cat requires a path.")
-          )) as FileReadResponse;
+          );
           output(io, parsed, response.content, response);
         });
       case "write":
@@ -425,7 +164,7 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
       case "raw":
         return await withWorkspace(env, async (workspaceId) => {
           const nodeId = required(subcommand, "verifs raw requires a node id.");
-          const response = (await client.readRaw(workspaceId, nodeId)) as { content: string };
+          const response: RawMemoryPacket = await client.readRaw(workspaceId, nodeId);
           output(io, parsed, response.content, response);
         });
       case "audit":
@@ -550,7 +289,7 @@ async function briefCommand(
   return withWorkspace(env, async (workspaceId) => {
     const briefArgs = parseBriefArgs(args);
     const cleaned = required(briefArgs.task.trim(), "verifs brief requires a task.");
-    const response = (await client.createBrief(workspaceId, cleaned, {
+    const response = await client.createBrief(workspaceId, cleaned, {
       actor: "human:cli",
       project_hint: briefArgs.project_slug,
       scope: parseMemoryScopes(briefArgs.scope),
@@ -564,7 +303,7 @@ async function briefCommand(
       include_candidates: briefArgs.include_candidates,
       limit: briefArgs.limit,
       create_run: briefArgs.create_run
-    })) as BriefResponse;
+    });
     output(io, parsed, response.brief_markdown, response);
   });
 }
@@ -580,7 +319,7 @@ async function runCommand(
   if (subcommand === "create") {
     return withWorkspace(env, async (workspaceId) => {
       const task = required(rest.join(" ").trim(), "verifs run create requires a task.");
-      const run = (await client.createRun(workspaceId, task, { actor: "human:cli" })) as AgentRun;
+      const run = await client.createRun(workspaceId, task, { actor: "human:cli" });
       output(io, parsed, formatRun(run), run);
     });
   }
@@ -589,10 +328,10 @@ async function runCommand(
     return withWorkspace(env, async (workspaceId) => {
       const runId = required(rest[0], "verifs run complete requires a run id.");
       const result = rest.slice(1).join(" ");
-      const run = (await client.completeRun(workspaceId, runId, {
+      const run = await client.completeRun(workspaceId, runId, {
         actor: "human:cli",
         result: result || undefined
-      })) as AgentRun;
+      });
       output(io, parsed, formatRun(run), run);
     });
   }
@@ -611,7 +350,7 @@ async function runCommand(
   if (subcommand === "lessons") {
     return withWorkspace(env, async (workspaceId) => {
       const runId = required(rest[0], "verifs run lessons requires a run id.");
-      const lessons = (await client.listRunLessons(workspaceId, runId)) as ReasoningMemoryCandidate[];
+      const lessons = await client.listRunLessons(workspaceId, runId);
       output(io, parsed, lessons.map(formatReasoningLesson).join("\n\n") || "(no reasoning lessons)", lessons);
     });
   }
@@ -646,7 +385,7 @@ async function runsCommand(
   parsed: ParsedArgs
 ): Promise<number> {
   return withWorkspace(env, async (workspaceId) => {
-    const runs = (await client.listRuns(workspaceId)) as AgentRun[];
+    const runs = await client.listRuns(workspaceId);
     output(io, parsed, runs.map(formatRun).join("\n") || "(no runs)", runs);
   });
 }
@@ -663,21 +402,21 @@ async function archiveCommand(
     return withWorkspace(env, async (workspaceId) => {
       const localPath = required(rest[0], "verifs archive add requires a local text file.");
       const content = await readFile(localPath, "utf8");
-      const archiveType = optionValue(rest, "--type") ?? "imported";
+      const archiveType = parseArchiveEntryType(optionValue(rest, "--type") ?? "imported");
       const title = optionValue(rest, "--title") ?? path.basename(localPath);
-      const entry = (await client.importArchiveText(workspaceId, content, {
-        archive_type: archiveType as "conversation" | "transcript" | "imported" | "agent-run" | "raw",
+      const entry = await client.importArchiveText(workspaceId, content, {
+        archive_type: archiveType,
         title,
         actor: "human:cli",
         metadata: { imported_from: localPath }
-      })) as ArchiveEntry;
+      });
       output(io, parsed, formatArchiveEntry(entry), entry);
     });
   }
 
   if (subcommand === "list") {
     return withWorkspace(env, async (workspaceId) => {
-      const entries = (await client.listArchive(workspaceId)) as ArchiveEntry[];
+      const entries = await client.listArchive(workspaceId);
       output(io, parsed, entries.map(formatArchiveEntry).join("\n") || "(no archive entries)", entries);
     });
   }
@@ -685,7 +424,7 @@ async function archiveCommand(
   if (subcommand === "show") {
     return withWorkspace(env, async (workspaceId) => {
       const archiveId = required(rest[0], "verifs archive show requires an archive id.");
-      const response = (await client.readArchive(workspaceId, archiveId)) as ArchiveReadResponse;
+      const response = await client.readArchive(workspaceId, archiveId);
       output(io, parsed, response.content, response);
     });
   }
@@ -693,9 +432,9 @@ async function archiveCommand(
   if (subcommand === "extract") {
     return withWorkspace(env, async (workspaceId) => {
       const archiveId = required(rest[0], "verifs archive extract requires an archive id.");
-      const response = (await client.extractArchive(workspaceId, archiveId, {
+      const response = await client.extractArchive(workspaceId, archiveId, {
         actor: "human:cli"
-      })) as ArchiveExtractResponse;
+      });
       output(io, parsed, formatArchiveExtract(response), response);
     });
   }
@@ -703,11 +442,11 @@ async function archiveCommand(
   if (subcommand === "search") {
     return withWorkspace(env, async (workspaceId) => {
       const query = required(rest.join(" ").trim(), "verifs archive search requires a query.");
-      const response = (await client.searchArchive(workspaceId, query, {
+      const response = await client.searchArchive(workspaceId, query, {
         mode: "hybrid",
         scope: ["archive"],
         include_sources: true
-      })) as MemoryGrepResponse;
+      });
       output(io, parsed, formatMemoryGrep(response), response);
     });
   }
@@ -754,7 +493,7 @@ async function syncCommand(
 ): Promise<number> {
   if (subcommand === "status") {
     return withWorkspace(env, async (workspaceId) => {
-      const status = (await client.syncStatus(workspaceId)) as SyncStatus;
+      const status = await client.syncStatus(workspaceId);
       output(io, parsed, formatSyncStatus(status), status);
     });
   }
@@ -775,7 +514,7 @@ async function syncCommand(
 
   if (subcommand === "conflicts") {
     return withWorkspace(env, async (workspaceId) => {
-      const conflicts = (await client.listSyncConflicts(workspaceId)) as ConflictRecord[];
+      const conflicts = await client.listSyncConflicts(workspaceId);
       output(io, parsed, conflicts.map(formatConflict).join("\n") || "(no sync conflicts)", conflicts);
     });
   }
@@ -783,15 +522,11 @@ async function syncCommand(
   if (subcommand === "resolve") {
     return withWorkspace(env, async (workspaceId) => {
       const conflictId = required(rest[0], "verifs sync resolve requires a conflict id.");
-      const mode = (optionValue(parsed.args, "--mode") ?? "keep_both") as
-        | "keep_local"
-        | "keep_remote"
-        | "manual_merge"
-        | "keep_both";
-      const response = (await client.resolveSyncConflict(workspaceId, conflictId, {
+      const mode = parseConflictResolutionMode(optionValue(parsed.args, "--mode") ?? "keep_both");
+      const response = await client.resolveSyncConflict(workspaceId, conflictId, {
         mode,
         actor: "human:cli"
-      })) as ConflictRecord;
+      });
       output(io, parsed, formatConflict(response), response);
     });
   }
@@ -809,7 +544,7 @@ async function teamCommand(
 ): Promise<number> {
   if (subcommand === "members") {
     return withWorkspace(env, async (workspaceId) => {
-      const members = (await client.listTeamMembers(workspaceId)) as TeamMember[];
+      const members = await client.listTeamMembers(workspaceId);
       output(io, parsed, members.map(formatTeamMember).join("\n") || "(no team members)", members);
     });
   }
@@ -817,12 +552,12 @@ async function teamCommand(
   if (subcommand === "invite") {
     return withWorkspace(env, async (workspaceId) => {
       const handle = required(rest[0], "verifs team invite requires a handle.");
-      const role = (optionValue(parsed.args, "--role") ?? "viewer") as "owner" | "admin" | "editor" | "agent" | "viewer";
-      const member = (await client.addTeamMember(workspaceId, {
+      const role = parseTeamRole(optionValue(parsed.args, "--role") ?? "viewer");
+      const member = await client.addTeamMember(workspaceId, {
         handle,
         role,
         actor: "human:cli"
-      })) as TeamMember;
+      });
       output(io, parsed, formatTeamMember(member), member);
     });
   }
@@ -830,12 +565,12 @@ async function teamCommand(
   if (subcommand === "role" && rest[0] === "set") {
     return withWorkspace(env, async (workspaceId) => {
       const handle = required(rest[1], "verifs team role set requires a handle.");
-      const role = required(rest[2], "verifs team role set requires a role.") as "owner" | "admin" | "editor" | "agent" | "viewer";
-      const member = (await client.setTeamRole(workspaceId, {
+      const role = parseTeamRole(required(rest[2], "verifs team role set requires a role."));
+      const member = await client.setTeamRole(workspaceId, {
         handle,
         role,
         actor: "human:cli"
-      })) as TeamMember;
+      });
       output(io, parsed, formatTeamMember(member), member);
     });
   }
@@ -853,12 +588,12 @@ async function promoteCommand(
   return withWorkspace(env, async (workspaceId) => {
     const sourcePath = required(args[0], "verifs promote requires a source path.");
     const targetPath = required(optionValue(args, "--to"), "verifs promote requires --to <target_path>.");
-    const promotion = (await client.promoteMemory(workspaceId, sourcePath, targetPath, {
+    const promotion = await client.promoteMemory(workspaceId, sourcePath, targetPath, {
       actor: "human:cli",
       reason: optionValue(args, "--reason"),
       source_node_id: optionValue(args, "--node"),
       require_review: true
-    })) as MemoryPromotion;
+    });
     output(io, parsed, formatPromotion(promotion), promotion);
   });
 }
@@ -870,7 +605,7 @@ async function promotionsCommand(
   parsed: ParsedArgs
 ): Promise<number> {
   return withWorkspace(env, async (workspaceId) => {
-    const promotions = (await client.listPromotions(workspaceId)) as MemoryPromotion[];
+    const promotions = await client.listPromotions(workspaceId);
     output(
       io,
       parsed,
@@ -888,7 +623,7 @@ async function candidatesCommand(
   args: string[]
 ): Promise<number> {
   return withWorkspace(env, async (workspaceId) => {
-    const candidates = (await client.listCandidates(workspaceId, candidateListOptions(args))) as MemoryCandidate[];
+    const candidates = await client.listCandidates(workspaceId, candidateListOptions(args));
     output(io, parsed, candidates.map(formatCandidate).join("\n\n") || "(no candidates)", candidates);
   });
 }
@@ -904,7 +639,7 @@ async function candidateCommand(
   if (subcommand === "show") {
     return withWorkspace(env, async (workspaceId) => {
       const id = required(rest[0], "verifs candidate show requires a candidate id.");
-      const candidate = (await client.readCandidate(workspaceId, id)) as MemoryCandidate;
+      const candidate = await client.readCandidate(workspaceId, id);
       output(io, parsed, formatCandidate(candidate), candidate);
     });
   }
@@ -913,10 +648,10 @@ async function candidateCommand(
     return withWorkspace(env, async (workspaceId) => {
       const id = required(rest[0], "verifs candidate edit requires a candidate id.");
       const body = candidateEditBody(rest.slice(1));
-      if (Object.keys(body).length === 1 && body.actor) {
+      if (!hasCandidateEdit(body)) {
         throw new Error("Usage: verifs candidate edit <id> [--summary <text>] [--detail <text>] [--status stale|conflicted|candidate|observed|superseded] [--target <path>] [--reason <text>]");
       }
-      const candidate = (await client.updateCandidate(workspaceId, id, body)) as MemoryCandidate;
+      const candidate = await client.updateCandidate(workspaceId, id, body);
       output(io, parsed, formatCandidate(candidate), candidate);
     });
   }
@@ -924,12 +659,12 @@ async function candidateCommand(
   if (subcommand === "approve") {
     return withWorkspace(env, async (workspaceId) => {
       const id = required(rest[0], "verifs candidate approve requires a candidate id.");
-      const candidate = (await client.approveCandidate(workspaceId, id, {
+      const candidate = await client.approveCandidate(workspaceId, id, {
         reviewer: "human:cli",
         comment: optionValue(rest, "--comment"),
         target_path: optionValue(rest, "--target") ?? optionValue(rest, "--to"),
         apply: true
-      })) as MemoryCandidate;
+      });
       output(io, parsed, formatCandidate(candidate), candidate);
     });
   }
@@ -937,10 +672,10 @@ async function candidateCommand(
   if (subcommand === "reject") {
     return withWorkspace(env, async (workspaceId) => {
       const id = required(rest[0], "verifs candidate reject requires a candidate id.");
-      const candidate = (await client.rejectCandidate(workspaceId, id, {
+      const candidate = await client.rejectCandidate(workspaceId, id, {
         reviewer: "human:cli",
         comment: optionValue(rest, "--comment")
-      })) as MemoryCandidate;
+      });
       output(io, parsed, formatCandidate(candidate), candidate);
     });
   }
@@ -948,16 +683,15 @@ async function candidateCommand(
   if (subcommand === "resolve-conflict") {
     return withWorkspace(env, async (workspaceId) => {
       const id = required(rest[0], "verifs candidate resolve-conflict requires a candidate id.");
-      const mode = required(optionValue(rest, "--mode"), "verifs candidate resolve-conflict requires --mode keep_new|keep_old|keep_both|mark_superseded.");
-      if (!["keep_new", "keep_old", "keep_both", "mark_superseded"].includes(mode)) {
-        throw new Error("verifs candidate resolve-conflict --mode must be keep_new, keep_old, keep_both, or mark_superseded.");
-      }
-      const candidate = (await client.resolveCandidateConflict(workspaceId, id, {
-        mode: mode as "keep_new" | "keep_old" | "keep_both" | "mark_superseded",
+      const mode = parseCandidateConflictResolutionMode(
+        required(optionValue(rest, "--mode"), "verifs candidate resolve-conflict requires --mode keep_new|keep_old|keep_both|mark_superseded.")
+      );
+      const candidate = await client.resolveCandidateConflict(workspaceId, id, {
+        mode,
         actor: "human:cli",
         reason: optionValue(rest, "--reason"),
         target_path: optionValue(rest, "--target") ?? optionValue(rest, "--to")
-      })) as MemoryCandidate;
+      });
       output(io, parsed, formatCandidate(candidate), candidate);
     });
   }
@@ -977,10 +711,10 @@ async function memoryCommand(
     return withWorkspace(env, async (workspaceId) => {
       const nodeId = required(rest[0], "verifs memory mark-stale requires a node id.");
       const reason = (optionValue(rest, "--reason") ?? rest.slice(1).join(" ").trim()) || "Marked stale.";
-      const node = (await client.markMemoryStale(workspaceId, nodeId, {
+      const node = await client.markMemoryStale(workspaceId, nodeId, {
         actor: "human:cli",
         reason
-      })) as MemoryNode;
+      });
       output(io, parsed, formatNode(node), node);
     });
   }
@@ -988,7 +722,7 @@ async function memoryCommand(
   if (subcommand === "confirm") {
     return withWorkspace(env, async (workspaceId) => {
       const nodeId = required(rest[0], "verifs memory confirm requires a node id.");
-      const node = (await client.confirmMemory(workspaceId, nodeId, { actor: "human:cli" })) as MemoryNode;
+      const node = await client.confirmMemory(workspaceId, nodeId, { actor: "human:cli" });
       output(io, parsed, formatNode(node), node);
     });
   }
@@ -1019,7 +753,7 @@ async function graphCommand(
   if (subcommand === "node") {
     return withWorkspace(env, async (workspaceId) => {
       const nodeId = required(rest[0], "verifs graph node requires a node id.");
-      const response = (await client.getMemoryGraphNode(workspaceId, nodeId)) as MemoryGraphNodeResponse;
+      const response = await client.getMemoryGraphNode(workspaceId, nodeId);
       output(io, parsed, formatGraphNode(response), response);
     });
   }
@@ -1027,7 +761,7 @@ async function graphCommand(
   if (subcommand === "related") {
     return withWorkspace(env, async (workspaceId) => {
       const nodeId = required(rest[0], "verifs graph related requires a node id.");
-      const response = (await client.findRelatedMemories(workspaceId, nodeId, graphRelatedOptions(rest.slice(1)))) as RelatedMemoryResult[];
+      const response = await client.findRelatedMemories(workspaceId, nodeId, graphRelatedOptions(rest.slice(1)));
       output(io, parsed, response.map(formatRelatedMemory).join("\n\n") || "(no related memories)", response);
     });
   }
@@ -1038,7 +772,7 @@ async function graphCommand(
       const relationType = parseMemoryRelationType(required(rest[1], "verifs graph link requires a relation type."));
       const toId = required(rest[2], "verifs graph link requires a to id.");
       const confidence = optionValue(rest, "--confidence");
-      const edge = (await client.createGraphEdge(workspaceId, {
+      const edge = await client.createGraphEdge(workspaceId, {
         from_type: parseGraphObjectType(optionValue(rest, "--from-type") ?? "memory_node"),
         from_id: fromId,
         to_type: parseGraphObjectType(optionValue(rest, "--to-type") ?? "memory_node"),
@@ -1048,7 +782,7 @@ async function graphCommand(
         reason: optionValue(rest, "--reason"),
         source_ref: optionValue(rest, "--source-ref") ?? undefined,
         actor: "human:cli"
-      })) as MemoryGraphEdge;
+      });
       output(io, parsed, formatGraphEdge(edge), edge);
     });
   }
@@ -1056,7 +790,7 @@ async function graphCommand(
   if (subcommand === "unlink") {
     return withWorkspace(env, async (workspaceId) => {
       const edgeId = required(rest[0], "verifs graph unlink requires an edge id.");
-      const response = (await client.deleteGraphEdge(workspaceId, edgeId, { actor: "human:cli" })) as DeleteGraphEdgeResponse;
+      const response = await client.deleteGraphEdge(workspaceId, edgeId, { actor: "human:cli" });
       output(io, parsed, `Deleted graph edge ${response.edge.id}`, response);
     });
   }
@@ -1066,10 +800,10 @@ async function graphCommand(
       const fromId = required(rest[0], "verifs graph path requires a from node id.");
       const toId = required(rest[1], "verifs graph path requires a to node id.");
       const maxDepth = optionValue(rest, "--max-depth");
-      const response = (await client.explainGraphPath(workspaceId, fromId, toId, {
+      const response = await client.explainGraphPath(workspaceId, fromId, toId, {
         max_depth: maxDepth ? Number(maxDepth) : undefined,
         relation_types: optionValue(rest, "--relation-types")?.split(",").map((entry) => entry.trim()).filter(Boolean)
-      })) as RelationshipPathResponse;
+      });
       output(io, parsed, formatGraphPath(response), response);
     });
   }
@@ -1086,9 +820,9 @@ async function approvalCommand(
   approve: boolean
 ): Promise<number> {
   return withWorkspace(env, async (workspaceId) => {
-    const response = (approve
+    const response = approve
       ? await client.approvePromotion(workspaceId, promotionId, { reviewer: "human:cli", apply: true })
-      : await client.rejectPromotion(workspaceId, promotionId, { reviewer: "human:cli" })) as MemoryPromotion;
+      : await client.rejectPromotion(workspaceId, promotionId, { reviewer: "human:cli" });
     output(io, parsed, formatPromotion(response), response);
   });
 }
@@ -1104,14 +838,14 @@ async function snapshotCommand(
   if (subcommand === "create") {
     return withWorkspace(env, async (workspaceId) => {
       const name = required(rest[0], "verifs snapshot create requires a name.");
-      const snapshot = (await client.createSnapshot(workspaceId, name, { actor: "human:cli" })) as SnapshotRecord;
+      const snapshot = await client.createSnapshot(workspaceId, name, { actor: "human:cli" });
       output(io, parsed, formatSnapshot(snapshot), snapshot);
     });
   }
 
   if (subcommand === "list") {
     return withWorkspace(env, async (workspaceId) => {
-      const snapshots = (await client.listSnapshots(workspaceId)) as SnapshotRecord[];
+      const snapshots = await client.listSnapshots(workspaceId);
       output(io, parsed, snapshots.map(formatSnapshot).join("\n") || "(no snapshots)", snapshots);
     });
   }
@@ -1150,7 +884,7 @@ async function healthCommand(
   parsed: ParsedArgs
 ): Promise<number> {
   return withWorkspace(env, async (workspaceId) => {
-    const health = (await client.getMemoryHealth(workspaceId)) as MemoryHealth;
+    const health = await client.getMemoryHealth(workspaceId);
     output(io, parsed, formatHealth(health), health);
   });
 }
@@ -1162,7 +896,7 @@ async function status(
   parsed: ParsedArgs
 ): Promise<number> {
   const config = await readConfig(env);
-  const workspaces = (await client.listWorkspaces()) as Workspace[];
+  const workspaces = await client.listWorkspaces();
   const selected = workspaces.find((workspace) => workspace.id === config.selectedWorkspaceId);
   const text = [
     `API: ${env.VERIFS_API_URL ?? defaultApiUrl}`,
@@ -1190,13 +924,13 @@ async function workspaceCommand(
 ): Promise<number> {
   if (subcommand === "create") {
     const name = required(rest[0], "verifs workspace create requires a name.");
-    const workspace = (await client.createWorkspace(name)) as Workspace;
+    const workspace = await client.createWorkspace(name);
     output(io, parsed, `Created workspace ${workspace.name} (${workspace.id})\nSelect it with: verifs use ${workspace.name}`, workspace);
     return 0;
   }
 
   if (subcommand === "list") {
-    const workspaces = (await client.listWorkspaces()) as Workspace[];
+    const workspaces = await client.listWorkspaces();
     const config = await readConfig(env);
     const text =
       workspaces
@@ -1216,7 +950,7 @@ async function useWorkspace(
   parsed: ParsedArgs,
   selector: string
 ): Promise<number> {
-  const workspaces = (await client.listWorkspaces()) as Workspace[];
+  const workspaces = await client.listWorkspaces();
   const workspace = workspaces.find((entry) => entry.id === selector || entry.name === selector);
   if (!workspace) {
     throw new Error(`Workspace not found: ${selector}`);
@@ -1296,7 +1030,7 @@ async function extractCommand(
   filePath: string
 ): Promise<number> {
   return withWorkspace(env, async (workspaceId) => {
-    const response = (await client.extractFile(workspaceId, filePath, "human:cli")) as ExtractedSource;
+    const response = await client.extractFile(workspaceId, filePath, "human:cli");
     output(io, parsed, formatExtractedSource(response), response);
   });
 }
@@ -1309,12 +1043,12 @@ async function extractedCommand(
   filePath: string
 ): Promise<number> {
   return withWorkspace(env, async (workspaceId) => {
-    const files = (await client.listFiles(workspaceId)) as FileRecord[];
+    const files = await client.listFiles(workspaceId);
     const file = files.find((entry) => entry.path === filePath);
     if (!file) {
       throw new Error(`File not found: ${filePath}`);
     }
-    const sources = (await client.readExtractedSources(workspaceId, file.id)) as ExtractedSource[];
+    const sources = await client.readExtractedSources(workspaceId, file.id);
     output(
       io,
       parsed,
@@ -1336,7 +1070,7 @@ async function memoryGrepCommand(
   return withWorkspace(env, async (workspaceId) => {
     const grep = parseGrepArgs(args, defaultMode);
     const cleaned = required(grep.query.trim(), `verifs ${commandName} requires a query.`);
-    const response = (await client.grepMemory(workspaceId, cleaned, {
+    const response = await client.grepMemory(workspaceId, cleaned, {
       mode: grep.mode,
       scope: parseGrepScopes(grep.scope),
       project_slug: grep.project_slug,
@@ -1344,14 +1078,14 @@ async function memoryGrepCommand(
       session_id: grep.session_id,
       agent_id: grep.agent_id,
       contact_id: grep.contact_id,
-	      run_id: grep.run_id,
-	      trust_min: parseMemoryTrustLevel(grep.trust_min),
-	      include_runs: grep.include_runs,
-	      include_sources: grep.include_sources,
-	      include_stale: grep.include_stale,
-	      limit: grep.limit,
-	      project_hint: grep.project_hint
-    })) as MemoryGrepResponse;
+      run_id: grep.run_id,
+      trust_min: parseMemoryTrustLevel(grep.trust_min),
+      include_runs: grep.include_runs,
+      include_sources: grep.include_sources,
+      include_stale: grep.include_stale,
+      limit: grep.limit,
+      project_hint: grep.project_hint
+    });
     output(io, parsed, formatMemoryGrep(response), response);
   });
 }
@@ -1366,7 +1100,7 @@ async function recallCommand(
   return withWorkspace(env, async (workspaceId) => {
     const scoped = parseScopedQueryArgs(args);
     const cleaned = required(scoped.query.trim(), "verifs recall requires a query.");
-    const response = (await client.recallMemory(workspaceId, cleaned, {
+    const response = await client.recallMemory(workspaceId, cleaned, {
       include_detail: true,
       include_raw: false,
       scope: parseMemoryScopes(scoped.scope),
@@ -1377,7 +1111,7 @@ async function recallCommand(
       contact_id: scoped.contact_id,
       run_id: scoped.run_id,
       include_related: scoped.include_related
-    })) as RecallResponse;
+    });
     output(io, parsed, formatRecall(response), response);
   });
 }
@@ -1396,7 +1130,7 @@ async function nodeCommand(
       const scopeFilter = optionValue(parsed.args, "--scope");
       const projectFilter = optionValue(parsed.args, "--project");
       const runFilter = optionValue(parsed.args, "--run");
-      const nodes = ((await client.listMemoryNodes(workspaceId)) as MemoryNode[]).filter((node) =>
+      const nodes = (await client.listMemoryNodes(workspaceId)).filter((node) =>
         (sourceFilter ? node.source_path === sourceFilter : true) &&
         (scopeFilter ? node.scope === scopeFilter : true) &&
         (projectFilter ? node.project_slug === projectFilter : true) &&
@@ -1413,10 +1147,10 @@ async function nodeCommand(
 
   if (subcommand === "read") {
     return withWorkspace(env, async (workspaceId) => {
-      const node = (await client.readMemoryNode(
+      const node = await client.readMemoryNode(
         workspaceId,
         required(rest[0], "verifs node read requires a node id.")
-      )) as MemoryNode;
+      );
       output(io, parsed, formatNode(node), node);
     });
   }
@@ -1436,7 +1170,7 @@ async function auditCommand(
   }
 
   return withWorkspace(env, async (workspaceId) => {
-    const events = (await client.listAuditEvents(workspaceId)) as AuditEvent[];
+    const events = await client.listAuditEvents(workspaceId);
     output(
       io,
       parsed,
@@ -1917,6 +1651,34 @@ function parseMemoryTrustLevel(value: string | undefined): MemoryTrustLevel | un
   return parseStringUnion(value ? [value] : undefined, memoryTrustLevels, "trust_min")?.[0];
 }
 
+function parseMemoryType(value: string | undefined): MemoryType | undefined {
+  return parseStringUnion(value ? [value] : undefined, memoryTypes, "memory_type")?.[0];
+}
+
+function parseCandidateStatus(value: string | undefined): MemoryCandidateStatus | undefined {
+  return parseStringUnion(value ? [value] : undefined, candidateStatuses, "status")?.[0];
+}
+
+function parseEditableCandidateStatus(value: string | undefined): ClientCandidateUpdateOptions["status"] | undefined {
+  return parseStringUnion(value ? [value] : undefined, editableCandidateStatuses, "status")?.[0];
+}
+
+function parseArchiveEntryType(value: string): ArchiveEntryType {
+  return parseStringUnion([value], archiveEntryTypes, "archive type")![0]!;
+}
+
+function parseConflictResolutionMode(value: string): ConflictResolutionMode {
+  return parseStringUnion([value], conflictResolutionModes, "conflict resolution mode")![0]!;
+}
+
+function parseCandidateConflictResolutionMode(value: string): CandidateConflictResolutionMode {
+  return parseStringUnion([value], candidateConflictResolutionModes, "candidate conflict resolution mode")![0]!;
+}
+
+function parseTeamRole(value: string): TeamRole {
+  return parseStringUnion([value], teamRoles, "team role")![0]!;
+}
+
 function parseGraphObjectType(value: string): MemoryGraphObjectType {
   const parsed = parseStringUnion([value], memoryGraphObjectTypes, "graph object type");
   return parsed![0]!;
@@ -1927,27 +1689,23 @@ function parseMemoryRelationType(value: string): MemoryRelationType {
   return parsed![0]!;
 }
 
-function candidateListOptions(args: string[]): Record<string, unknown> {
-  return compactObject({
-    status: optionValue(args, "--status"),
+function candidateListOptions(args: string[]): ClientCandidateOptions {
+  const scope = optionValue(args, "--scope");
+  return {
+    status: parseCandidateStatus(optionValue(args, "--status")),
     duplicates: args.includes("--duplicates") ? true : undefined,
     conflicts: args.includes("--conflicts") ? true : undefined,
-    scope: optionValue(args, "--scope"),
+    scope: parseMemoryScopes(scope ? scope.split(",").map((entry) => entry.trim()).filter(Boolean) : undefined),
     project_slug: optionValue(args, "--project") ?? optionValue(args, "--project-slug"),
     repo_path: optionValue(args, "--repo") ?? optionValue(args, "--repo-path"),
     session_id: optionValue(args, "--session"),
     agent_id: optionValue(args, "--agent"),
     contact_id: optionValue(args, "--contact"),
     run_id: optionValue(args, "--run")
-  });
+  };
 }
 
-function graphRelatedOptions(args: string[]): {
-  depth?: number;
-  limit?: number;
-  relation_types?: string[];
-  include_stale?: boolean;
-} {
+function graphRelatedOptions(args: string[]): ClientGraphRelatedOptions {
   const depth = optionValue(args, "--depth");
   const limit = optionValue(args, "--limit");
   const relationTypes = optionValue(args, "--relation-types")?.split(",").map((entry) => entry.trim()).filter(Boolean);
@@ -1959,26 +1717,27 @@ function graphRelatedOptions(args: string[]): {
   };
 }
 
-function candidateEditBody(args: string[]): Record<string, unknown> {
+function candidateEditBody(args: string[]): ClientCandidateUpdateOptions {
   const confidence = optionValue(args, "--confidence");
   const tags = optionValue(args, "--tags");
-  return compactObject({
+  return {
     actor: "human:cli",
     summary: optionValue(args, "--summary"),
     trigger: optionValue(args, "--trigger"),
     detail: optionValue(args, "--detail"),
     memory_text: optionValue(args, "--memory"),
-    memory_type: optionValue(args, "--type"),
+    memory_type: parseMemoryType(optionValue(args, "--type")),
     confidence: confidence ? Number(confidence) : undefined,
     tags: tags ? tags.split(",").map((tag) => tag.trim()).filter(Boolean) : undefined,
-    status: optionValue(args, "--status"),
+    status: parseEditableCandidateStatus(optionValue(args, "--status")),
     target_path: optionValue(args, "--target") ?? optionValue(args, "--to"),
     reason: optionValue(args, "--reason")
-  });
+  };
 }
 
-function compactObject(input: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+function hasCandidateEdit(body: ClientCandidateUpdateOptions): boolean {
+  const { actor: _actor, reviewer: _reviewer, ...fields } = body;
+  return Object.values(fields).some((value) => value !== undefined);
 }
 
 function parseBriefArgs(args: string[]): {

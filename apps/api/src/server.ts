@@ -1,5 +1,5 @@
 import cors from "@fastify/cors";
-import { VeriFS, VeriFSError, memoryTrustLevels, memoryTypes, parseStringUnion, type ArchiveEntryType, type MemoryGrepOptions, type MemoryRelationType, type MemoryTrustLevel, type MemoryType, type PromoteMemoryRequest, type RecallOptions, type SyncEvent } from "@verifs/core";
+import { VeriFS, VeriFSError, memoryScopes, memoryTrustLevels, memoryTypes, parseStringUnion, type ArchiveEntryType, type BriefRequest, type MemoryCandidateStatus, type MemoryGraphObjectType, type MemoryGrepOptions, type MemoryRelationType, type MemoryScope, type MemoryTrustLevel, type MemoryType, type RecallOptions, type SyncEvent } from "@verifs/core";
 import dotenv from "dotenv";
 import Fastify, { type FastifyRequest } from "fastify";
 import { dirname, resolve } from "node:path";
@@ -8,6 +8,22 @@ import { fileURLToPath } from "node:url";
 dotenv.config();
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
+
+const memoryCandidateStatuses = ["observed", "candidate", "duplicate", "approved", "rejected", "superseded", "stale", "conflicted"] as const;
+
+type MemoryRecallBody = RecallOptions & {
+  query?: string;
+};
+
+type ExplainRecallBody = Omit<RecallOptions, "memory_types" | "trust_levels"> & {
+  query?: string;
+  memory_types?: string[];
+  trust_levels?: string[];
+};
+
+type BriefRequestBody = BriefRequest & {
+  task?: string;
+};
 
 export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
   const mode = (process.env.VERIFS_MODE as "local" | "team" | "cloud" | undefined) ?? "local";
@@ -158,25 +174,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
 
   app.post("/workspaces/:id/memory/search", async (request) => {
     const { id } = request.params as { id: string };
-    const body = request.body as {
-      query?: string;
-      limit?: number;
-      include_detail?: boolean;
-      include_raw?: boolean;
-      project_hint?: string;
-      scope?: RecallOptions["scope"];
-      project_id?: string;
-      project_slug?: string;
-      repo_id?: string;
-      repo_path?: string;
-      session_id?: string;
-      agent_id?: string;
-      contact_id?: string;
-      run_id?: string;
-      include_related?: boolean;
-      include_stale?: boolean;
-      log_memory_usage?: boolean;
-    };
+    const body = request.body as MemoryRecallBody;
     return verifs.searchMemory(id, body.query ?? "", body);
   });
 
@@ -239,25 +237,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
 
   app.post("/workspaces/:id/memory/recall", async (request) => {
     const { id } = request.params as { id: string };
-    const body = request.body as {
-      query?: string;
-      limit?: number;
-      include_detail?: boolean;
-      include_raw?: boolean;
-      project_hint?: string;
-      scope?: RecallOptions["scope"];
-      project_id?: string;
-      project_slug?: string;
-      repo_id?: string;
-      repo_path?: string;
-      session_id?: string;
-      agent_id?: string;
-      contact_id?: string;
-      run_id?: string;
-      include_related?: boolean;
-      include_stale?: boolean;
-      log_memory_usage?: boolean;
-    };
+    const body = request.body as MemoryRecallBody;
     return verifs.recallMemory(id, body.query ?? "", body);
   });
 
@@ -339,9 +319,9 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
     const body = request.body as {
       from_node_id?: string;
       to_node_id?: string;
-      from_type?: "memory_node" | "file" | "run" | "candidate" | "reasoning_memory";
+      from_type?: MemoryGraphObjectType;
       from_id?: string;
-      to_type?: "memory_node" | "file" | "run" | "candidate" | "reasoning_memory";
+      to_type?: MemoryGraphObjectType;
       to_id?: string;
       relation_type?: MemoryRelationType;
       confidence?: number;
@@ -406,25 +386,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
 
   app.post("/workspaces/:id/memory/explain-recall", async (request) => {
     const { id } = request.params as { id: string };
-    const body = request.body as {
-      query?: string;
-      limit?: number;
-      include_detail?: boolean;
-      include_raw?: boolean;
-      project_hint?: string;
-      mode?: RecallOptions["mode"];
-      memory_types?: string[];
-      trust_levels?: string[];
-      include_why?: boolean;
-      include_contradictions?: boolean;
-      include_links?: boolean;
-      include_related?: boolean;
-      include_trust?: boolean;
-      include_rejected?: boolean;
-      include_stale?: boolean;
-      run_id?: string;
-      log_memory_usage?: boolean;
-    };
+    const body = request.body as ExplainRecallBody;
     const options: RecallOptions = {
       ...body,
       memory_types: parseMemoryTypes(body.memory_types),
@@ -435,33 +397,11 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
 
   app.post("/workspaces/:id/brief", async (request) => {
     const { id } = request.params as { id: string };
-    const body = request.body as {
-      task?: string;
-      project_hint?: string;
-      scope?: RecallOptions["scope"];
-      project_id?: string;
-      project_slug?: string;
-      repo_id?: string;
-      repo_path?: string;
-      session_id?: string;
-      agent_id?: string;
-      contact_id?: string;
-      run_id?: string;
-      files?: string[];
-      actor?: string;
-      mode?: RecallOptions["mode"];
-      include_recent_runs?: boolean;
-      include_open_questions?: boolean;
-      include_contradictions?: boolean;
-      include_raw?: boolean;
-      include_candidates?: boolean;
-      limit?: number;
-      create_run?: boolean;
-    };
+    const body = request.body as BriefRequestBody;
     return verifs.createBrief(id, {
       task: body.task ?? "",
       project_hint: body.project_hint,
-      scope: body.scope as never,
+      scope: body.scope,
       project_id: body.project_id,
       project_slug: body.project_slug,
       repo_id: body.repo_id,
@@ -578,10 +518,10 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       run_id?: string;
     };
     return verifs.listCandidates(id, {
-      status: query.status as never,
+      status: parseMemoryCandidateStatus(query.status),
       duplicates: query.duplicates === "true",
       conflicts: query.conflicts === "true",
-      scope: query.scope as never,
+      scope: parseMemoryScopeQuery(query.scope),
       project_slug: query.project_slug,
       repo_path: query.repo_path,
       session_id: query.session_id,
@@ -647,7 +587,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       source_path?: string;
       target_path?: string;
       source_node_id?: string;
-      proposed_memory_type?: string;
+      proposed_memory_type?: MemoryType;
       reason?: string;
       actor?: string;
       require_review?: boolean;
@@ -657,7 +597,7 @@ export async function buildServer(): Promise<ReturnType<typeof Fastify>> {
       source_path: body.source_path ?? "",
       target_path: body.target_path ?? "",
       source_node_id: body.source_node_id,
-      proposed_memory_type: body.proposed_memory_type as PromoteMemoryRequest["proposed_memory_type"],
+      proposed_memory_type: body.proposed_memory_type,
       reason: body.reason,
       actor: body.actor,
       require_review: body.require_review ?? true,
@@ -841,6 +781,22 @@ function parseMemoryTypes(values: string[] | undefined): MemoryType[] | undefine
 
 function parseMemoryTrustLevels(values: string[] | undefined): MemoryTrustLevel[] | undefined {
   return parseStringUnion(values, memoryTrustLevels, "trust_levels");
+}
+
+function parseMemoryCandidateStatus(value: string | undefined): MemoryCandidateStatus | undefined {
+  return parseStringUnion(value ? [value] : undefined, memoryCandidateStatuses, "status")?.[0];
+}
+
+function parseMemoryScopeQuery(value: string | string[] | undefined): MemoryScope | MemoryScope[] | undefined {
+  const parsed = parseStringUnion(queryStringList(value), memoryScopes, "scope");
+  if (!parsed) return undefined;
+  return parsed.length === 1 ? parsed[0] : parsed;
+}
+
+function queryStringList(value: string | string[] | undefined): string[] | undefined {
+  if (value === undefined) return undefined;
+  const values = Array.isArray(value) ? value : [value];
+  return values.flatMap((entry) => entry.split(",").map((item) => item.trim()).filter(Boolean));
 }
 
 function actorFromRequest(request: FastifyRequest): string | undefined {

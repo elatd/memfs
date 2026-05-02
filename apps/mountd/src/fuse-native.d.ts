@@ -1,3 +1,5 @@
+import type { FuseMountOptions, FuseOperations } from "./index.js";
+
 declare module "fuse-native" {
   export default class Fuse {
     static ENOENT: number;
@@ -12,7 +14,7 @@ declare module "fuse-native" {
     static EBADF: number;
     static isConfigured?(callback: (error: Error | null, configured?: boolean) => void): void;
 
-    constructor(mountpoint: string, operations: Record<string, unknown>, options?: Record<string, unknown>);
+    constructor(mountpoint: string, operations: FuseOperations, options?: FuseMountOptions);
     mount(callback: (error?: Error | null) => void): void;
     unmount(callback: (error?: Error | null) => void): void;
   }

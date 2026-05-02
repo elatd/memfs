@@ -109,6 +109,19 @@ describe("mountd FUSE operations", () => {
     expect(fuseErrorCode(new MountCoreError("EACCES", "denied"))).toBe(-13);
     expect(fuseErrorCode(new MountCoreError("RESERVED_PATH", "reserved"))).toBe(-13);
     expect(fuseErrorCode(new MountCoreError("ENOENT", "missing"))).toBe(-2);
+    expect(fuseErrorCode(new MountCoreError("ENOENT", "missing"), { ENOENT: undefined })).toBe(-2);
+  });
+
+  it("routes thrown operation errors through FUSE callbacks", async () => {
+    const core = fakeCore();
+    core.stat = async () => {
+      throw new MountCoreError("ENOENT", "missing");
+    };
+    const ops: FuseOperations = createFuseOperations(core, { mode: "read-only" });
+
+    const [code] = await invoke(ops.getattr, "/missing");
+
+    expect(code).toBe(-2);
   });
 });
 
