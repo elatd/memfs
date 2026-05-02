@@ -137,6 +137,14 @@ Run the local retrieval benchmark:
 pnpm benchmark:retrieval
 ```
 
+Run the deterministic benchmark smoke suite:
+
+```bash
+pnpm bench:smoke
+```
+
+The smoke suite compares a no-memory baseline with MemFS on a tiny source-backed fixture set and writes JSON/Markdown reports to `benchmarks/results/`. A 100% smoke result means the harness and deterministic fixtures are healthy; it is not a claim of broad benchmark superiority. LongMemEval, LoCoMo, and task-memory benchmarks are planned. See [Benchmarks](./benchmarks/README.md).
+
 ## SDK Quickstart
 
 The high-level SDK keeps the Mem0-style path short while still using MemFS workspaces, files, candidates, runs, and review rules underneath:

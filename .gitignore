@@ -4,6 +4,8 @@ dist
 .DS_Store
 data/*
 !data/.gitkeep
+benchmarks/results/*
+!benchmarks/results/.gitkeep
 *.db
 *.db-shm
 *.db-wal
