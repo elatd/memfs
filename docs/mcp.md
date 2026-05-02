@@ -82,6 +82,7 @@ Safety:
 - Protected file writes and deletes require `allow_protected_write=true`.
 - `memfs_file_append` and `memfs_run_append` are the preferred way for agents to keep scratch and run notes during work.
 - Raw source content is available only through `memfs_memory_raw_read` or `include_raw=true` on recall.
+- `memfs_memory_search` is meaning-oriented hybrid search and returns the same grep/search result shape as `memfs_grep` with `mode: "hybrid"`.
 - Memory search and recall return `source_path` and `raw_ref`.
 - `memfs_grep` is exact by default. Use `memfs_memory_search` for meaning-oriented search, or pass `mode: "hybrid"` / `mode: "semantic"` to `memfs_grep`.
 - Recall returns source locations when available.

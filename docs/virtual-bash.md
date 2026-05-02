@@ -44,7 +44,7 @@ Starting a task?  use recall or brief
 Need proof?       use cat, node read, or raw
 ```
 
-`grep` is exact text search by default. `search` runs meaning-oriented hybrid search and accepts `--semantic`, `--hybrid`, scope flags, and `--include-stale` for stale/superseded audit searches. `sgrep` remains available as a deprecated compatibility alias for `search --semantic`.
+`grep` is exact text search by default. `search` runs meaning-oriented hybrid search and accepts `--semantic`, `--hybrid`, scope flags, and `--include-stale` for stale/superseded audit searches.
 
 Each call returns:
 

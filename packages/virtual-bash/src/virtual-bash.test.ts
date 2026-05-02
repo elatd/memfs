@@ -33,7 +33,7 @@ describe("virtual bash", () => {
     ]);
   });
 
-  it("executes ls cat write grep search sgrep and recall", async () => {
+  it("executes ls cat write grep search and recall", async () => {
     const shell = createMemoryFsShell({ memoryfs, workspaceId });
 
     const write = await shell.exec('write /runs/demo/result.md "Decision: We decided to simplify onboarding."');
@@ -52,11 +52,8 @@ describe("virtual bash", () => {
 
 	    const search = await shell.exec('search "onboarding decision"');
 	    expect(search.displayText).toContain("raw_ref:");
+	    expect(search.displayText).toContain("source: /runs/demo/result.md");
 	    expect((search.data as { mode: string; results: Array<{ match_type: string }> }).mode).toBe("hybrid");
-
-	    const sgrep = await shell.exec('sgrep "onboarding decision"');
-	    expect(sgrep.displayText).toContain("raw_ref:");
-	    expect((sgrep.data as { mode: string; results: Array<{ match_type: string }> }).mode).toBe("semantic");
 
     const recall = await shell.exec('recall "What should I remember before changing onboarding?"');
     expect(recall.displayText).toContain("source: /runs/demo/result.md");
