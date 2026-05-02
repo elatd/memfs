@@ -146,7 +146,9 @@ The smoke suite compares a no-memory baseline with VeriFS on a tiny source-backe
 
 ## SDK Quickstart
 
-The high-level SDK keeps the Mem0-style path short while still using VeriFS workspaces, files, candidates, runs, and review rules underneath:
+The high-level SDK keeps the Mem0-style path short while still using VeriFS workspaces, files, candidates, runs, and review rules underneath.
+
+The `@verifs/sdk` package is currently workspace-local and is marked private in package metadata, so it is not installable from npm yet. Use this import inside this monorepo or a linked checkout. External apps should integrate with the local HTTP API at `http://localhost:3131` until the SDK has publish-ready package metadata.
 
 ```ts
 import { VeriFSClient } from "@verifs/sdk";
