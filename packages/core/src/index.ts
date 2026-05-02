@@ -1,4 +1,4 @@
-import { openMemoryDatabase, type SqliteDatabase } from "@memoryfs/db";
+import { openMemoryDatabase, type SqliteDatabase } from "@verifs/db";
 import {
   bm25Scores,
   cosineSimilarity,
@@ -19,8 +19,8 @@ import {
   type MemoryType,
   type RecallMode,
   type RecallQueryPlan
-} from "@memoryfs/memory";
-import { extractDocument, type ExtractedSection } from "@memoryfs/memory/extractors";
+} from "@verifs/memory";
+import { extractDocument, type ExtractedSection } from "@verifs/memory/extractors";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -36,8 +36,8 @@ export type {
   RankedItem,
   RecallMode,
   RecallQueryPlan
-} from "@memoryfs/memory";
-export { memoryTypes, recallModes } from "@memoryfs/memory";
+} from "@verifs/memory";
+export { memoryTypes, recallModes } from "@verifs/memory";
 
 export const defaultProtectedPathGlobs = [
   "/profile.md",
@@ -101,16 +101,16 @@ export type RunMemoryUsageType = "recalled" | "opened" | "cited" | "ignored" | "
 export type ArchiveEntryType = "conversation" | "transcript" | "imported" | "agent-run" | "raw";
 export const memoryScopes = ["global", "workspace", "project", "repo", "session", "agent", "contact", "run"] as const;
 export type MemoryScope = (typeof memoryScopes)[number];
-export type MemfsMode = "local" | "team" | "cloud";
+export type VeriFSMode = "local" | "team" | "cloud";
 export type TeamRole = "owner" | "admin" | "editor" | "agent" | "viewer";
 export type ConflictStatus = "unresolved" | "resolved_local" | "resolved_remote" | "resolved_manual";
 export type ConflictResolutionMode = "keep_local" | "keep_remote" | "manual_merge" | "keep_both";
 export type CandidateConflictResolutionMode = "keep_new" | "keep_old" | "keep_both" | "mark_superseded";
 
-export interface MemoryFSOptions {
+export interface VeriFSOptions {
   dataDir: string;
   databasePath?: string;
-  mode?: MemfsMode;
+  mode?: VeriFSMode;
   databaseUrl?: string;
   syncEnabled?: boolean;
   authRequired?: boolean;
@@ -318,7 +318,7 @@ export interface ConflictRecord {
 }
 
 export interface SyncStatus {
-  mode: MemfsMode;
+  mode: VeriFSMode;
   enabled: boolean;
   pending_events: number;
   unresolved_conflicts: number;
@@ -1048,7 +1048,7 @@ interface EmbeddingRow {
   embedding_json: string;
 }
 
-export class MemoryFSError extends Error {
+export class VeriFSError extends Error {
   constructor(
     message: string,
     public readonly statusCode = 400
@@ -1066,13 +1066,13 @@ export function parseStringUnion<const T extends readonly string[]>(
   const allowedValues = new Set<string>(allowed);
   return values.map((value) => {
     if (!allowedValues.has(value)) {
-      throw new MemoryFSError(`${fieldName} contains unsupported value: ${value}`, 400);
+      throw new VeriFSError(`${fieldName} contains unsupported value: ${value}`, 400);
     }
     return value as T[number];
   });
 }
 
-export class MemoryFS {
+export class VeriFS {
   readonly archive: ArchiveApi;
   readonly dataDir: string;
   readonly blobsDir: string;
@@ -1080,25 +1080,25 @@ export class MemoryFS {
   readonly dbPath: string;
   db!: SqliteDatabase;
   private readonly memoryOptions: MemoryModelOptions;
-  private readonly mode: MemfsMode;
+  private readonly mode: VeriFSMode;
   private readonly syncEnabled: boolean;
   private readonly authRequired: boolean;
   private readonly authzProvider?: AuthzProvider;
   private readonly syncStore?: SyncStore;
   private readonly objectStoreBucket: string | null;
 
-  constructor(options: MemoryFSOptions) {
+  constructor(options: VeriFSOptions) {
     this.dataDir = path.resolve(options.dataDir);
     this.blobsDir = path.join(this.dataDir, "blobs");
     this.workspacesDir = path.join(this.dataDir, "workspaces");
-    this.dbPath = options.databasePath ?? path.join(this.dataDir, "memoryfs.db");
+    this.dbPath = options.databasePath ?? path.join(this.dataDir, "verifs.db");
     this.memoryOptions = options.memory ?? {};
     this.mode = options.mode ?? "local";
     this.syncEnabled = options.syncEnabled ?? this.mode !== "local";
     this.authRequired = options.authRequired ?? this.mode !== "local";
     this.authzProvider = options.authzProvider;
     this.syncStore = options.syncStore;
-    this.objectStoreBucket = process.env.MEMFS_OBJECT_STORE_BUCKET ?? null;
+    this.objectStoreBucket = process.env.VERIFS_OBJECT_STORE_BUCKET ?? null;
     this.archive = {
       writeConversation: (workspaceId, input) => this.writeArchiveConversation(workspaceId, input),
       writeTranscript: (workspaceId, input) => this.writeArchiveTranscript(workspaceId, input),
@@ -1124,7 +1124,7 @@ export class MemoryFS {
   createWorkspace(name: string): Workspace {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      throw new MemoryFSError("Workspace name is required.");
+      throw new VeriFSError("Workspace name is required.");
     }
 
     const existing = this.db.prepare("SELECT * FROM workspaces WHERE name = ?").get(trimmedName) as
@@ -1161,7 +1161,7 @@ export class MemoryFS {
       | Workspace
       | undefined;
     if (!workspace) {
-      throw new MemoryFSError("Workspace not found.", 404);
+      throw new VeriFSError("Workspace not found.", 404);
     }
     return workspace;
   }
@@ -1203,7 +1203,7 @@ export class MemoryFS {
     this.getWorkspace(workspaceId);
     const normalizedPath = normalizeMemoryPath(inputPath);
     if (normalizedPath === "/") {
-      throw new MemoryFSError("Cannot write to workspace root.");
+      throw new VeriFSError("Cannot write to workspace root.");
     }
 
     const actor = options.actor ?? "agent:unknown";
@@ -1214,7 +1214,7 @@ export class MemoryFS {
         path: normalizedPath,
         rule: protectedMatch
       });
-      throw new MemoryFSError(
+      throw new VeriFSError(
         `Protected path ${normalizedPath} requires allow_protected_write=true.`,
         403
       );
@@ -1245,7 +1245,7 @@ export class MemoryFS {
     this.getWorkspace(workspaceId);
     const normalizedPath = normalizeMemoryPath(inputPath);
     if (normalizedPath === "/") {
-      throw new MemoryFSError("Cannot upload to workspace root.");
+      throw new VeriFSError("Cannot upload to workspace root.");
     }
 
     const actor = options.actor ?? "agent:unknown";
@@ -1256,7 +1256,7 @@ export class MemoryFS {
         path: normalizedPath,
         rule: protectedMatch
       });
-      throw new MemoryFSError(
+      throw new VeriFSError(
         `Protected path ${normalizedPath} requires allow_protected_write=true.`,
         403
       );
@@ -1290,7 +1290,7 @@ export class MemoryFS {
         path: normalizedPath,
         rule: protectedMatch
       });
-      throw new MemoryFSError(
+      throw new VeriFSError(
         `Protected path ${normalizedPath} requires allow_protected_write=true.`,
         403
       );
@@ -1434,7 +1434,7 @@ export class MemoryFS {
       .prepare("SELECT * FROM archive_entries WHERE workspace_id = ? AND id = ?")
       .get(workspaceId, archiveId) as ArchiveEntry | undefined;
     if (!entry) {
-      throw new MemoryFSError("Archive entry not found.", 404);
+      throw new VeriFSError("Archive entry not found.", 404);
     }
     return entry;
   }
@@ -1503,7 +1503,7 @@ export class MemoryFS {
     this.getWorkspace(workspaceId);
     const queryText = query.trim();
     if (!queryText) {
-      throw new MemoryFSError("Recall query is required.");
+      throw new VeriFSError("Recall query is required.");
     }
 
     const plan = planRecallQuery({
@@ -1820,7 +1820,7 @@ export class MemoryFS {
     this.getWorkspace(workspaceId);
     const queryText = query.trim();
     if (!queryText) {
-      throw new MemoryFSError("Memory grep query is required.");
+      throw new VeriFSError("Memory grep query is required.");
     }
 
     const mode = options.mode ?? "literal";
@@ -2025,7 +2025,7 @@ export class MemoryFS {
       )
       .get(workspaceId, nodeId) as MemoryNodeRow | undefined;
     if (!row) {
-      throw new MemoryFSError("Memory node not found.", 404);
+      throw new VeriFSError("Memory node not found.", 404);
     }
     return this.withTemporalLinks(workspaceId, rowToMemoryNode(row));
   }
@@ -2288,7 +2288,7 @@ export class MemoryFS {
       status = "resolved_manual";
     } else if (event && filePayload && input.mode === "manual_merge") {
       if (input.manual_content === undefined) {
-        throw new MemoryFSError("manual_merge requires manual_content.");
+        throw new VeriFSError("manual_merge requires manual_content.");
       }
       await this.writeFile(workspaceId, filePayload.path, input.manual_content, {
         actor,
@@ -2321,7 +2321,7 @@ export class MemoryFS {
     this.getMemoryNode(workspaceId, fromNodeId);
     this.getMemoryNode(workspaceId, toNodeId);
     if (fromNodeId === toNodeId) {
-      throw new MemoryFSError("Cannot link a memory node to itself.");
+      throw new VeriFSError("Cannot link a memory node to itself.");
     }
 
     const existing = this.db
@@ -2453,7 +2453,7 @@ export class MemoryFS {
     const fromId = input.from_id ?? input.from_node_id;
     const toId = input.to_id ?? input.to_node_id;
     if (!fromId || !toId) {
-      throw new MemoryFSError("Graph edge requires from and to ids.");
+      throw new VeriFSError("Graph edge requires from and to ids.");
     }
     const relationType = normalizeMemoryRelationType(input.relation_type);
     if (fromType === "memory_node" && toType === "memory_node") {
@@ -2526,7 +2526,7 @@ export class MemoryFS {
       | MemoryGraphEdge
       | undefined;
     if (!edge) {
-      throw new MemoryFSError("Graph edge not found.", 404);
+      throw new VeriFSError("Graph edge not found.", 404);
     }
     const packet = this.decorateGraphEdge(edge);
     this.db.prepare("DELETE FROM memory_graph_edges WHERE workspace_id = ? AND id = ?").run(workspaceId, edgeId);
@@ -2879,7 +2879,7 @@ export class MemoryFS {
     this.getWorkspace(workspaceId);
     const task = request.task.trim();
     if (!task) {
-      throw new MemoryFSError("Brief task is required.");
+      throw new VeriFSError("Brief task is required.");
     }
 
     const actor = request.actor ?? "agent:brief";
@@ -2958,7 +2958,7 @@ export class MemoryFS {
     this.getWorkspace(workspaceId);
     const task = input.task.trim();
     if (!task) {
-      throw new MemoryFSError("Run task is required.");
+      throw new VeriFSError("Run task is required.");
     }
 
     const now = isoNow();
@@ -3025,7 +3025,7 @@ export class MemoryFS {
       .prepare("SELECT * FROM agent_runs WHERE workspace_id = ? AND id = ?")
       .get(workspaceId, runId) as AgentRun | undefined;
     if (!run) {
-      throw new MemoryFSError("Run not found.", 404);
+      throw new VeriFSError("Run not found.", 404);
     }
     return run;
   }
@@ -3448,13 +3448,13 @@ export class MemoryFS {
     const sourcePath = normalizeMemoryPath(request.source_path);
     const targetPath = normalizeMemoryPath(request.target_path);
     if (targetPath === "/") {
-      throw new MemoryFSError("Promotion target path cannot be the workspace root.");
+      throw new VeriFSError("Promotion target path cannot be the workspace root.");
     }
 
     const { file, content } = await this.readFile(workspaceId, sourcePath);
     const sourceNode = request.source_node_id ? this.getMemoryNode(workspaceId, request.source_node_id) : null;
     if (sourceNode && sourceNode.source_file_id !== file.id) {
-      throw new MemoryFSError("Promotion source_node_id must belong to source_path.");
+      throw new VeriFSError("Promotion source_node_id must belong to source_path.");
     }
 
     const protectedTarget = this.matchProtectedPath(workspaceId, targetPath);
@@ -3579,7 +3579,7 @@ export class MemoryFS {
       .prepare("SELECT * FROM memory_promotions WHERE workspace_id = ? AND id = ?")
       .get(workspaceId, promotionId) as MemoryPromotion | undefined;
     if (!promotion) {
-      throw new MemoryFSError("Promotion not found.", 404);
+      throw new VeriFSError("Promotion not found.", 404);
     }
     return promotion;
   }
@@ -3602,7 +3602,7 @@ export class MemoryFS {
     } else {
       content = explicitText ?? input.detail ?? input.summary ?? "";
       if (!content.trim()) {
-        throw new MemoryFSError("Candidate memory text or source_path is required.");
+        throw new VeriFSError("Candidate memory text or source_path is required.");
       }
       const candidatePath = `/scratch/candidates/${timestampSlug()}-${randomUUID().slice(0, 8)}.md`;
       file = await this.writeFile(workspaceId, candidatePath, content, {
@@ -3668,7 +3668,7 @@ export class MemoryFS {
     const nodeId = promotion?.candidate_node_id ?? candidateId;
     const node = this.getMemoryNode(workspaceId, nodeId);
     if (!isCandidateNode(node, promotionsByCandidate.has(node.id))) {
-      throw new MemoryFSError("Candidate not found.", 404);
+      throw new VeriFSError("Candidate not found.", 404);
     }
     return this.memoryCandidateFromNode(workspaceId, node, promotion ?? promotionsByCandidate.get(node.id) ?? null);
   }
@@ -3682,7 +3682,7 @@ export class MemoryFS {
     const actor = input.actor ?? input.reviewer ?? "human:reviewer";
     const status = input.status ?? current.status;
     if (status === "approved" || status === "rejected") {
-      throw new MemoryFSError("Use candidate approve or reject for terminal review decisions.");
+      throw new VeriFSError("Use candidate approve or reject for terminal review decisions.");
     }
 
     const memoryText = input.memory_text?.trim();
@@ -3829,7 +3829,7 @@ export class MemoryFS {
         duplicate_of: candidate.duplicate_of,
         comment: input.comment ?? null
       });
-      throw new MemoryFSError("Duplicate candidates must be edited or rejected before approval.", 409);
+      throw new VeriFSError("Duplicate candidates must be edited or rejected before approval.", 409);
     }
     if (candidate.status === "conflicted" || candidate.conflict_reason) {
       this.audit(workspaceId, reviewer, "candidate.approval_blocked_conflict", {
@@ -3838,7 +3838,7 @@ export class MemoryFS {
         conflict_reason: candidate.conflict_reason,
         comment: input.comment ?? null
       });
-      throw new MemoryFSError("Conflicting candidates require resolution before approval.", 409);
+      throw new VeriFSError("Conflicting candidates require resolution before approval.", 409);
     }
     const detectedConflicts = await this.detectApprovalConflicts(
       workspaceId,
@@ -3849,11 +3849,11 @@ export class MemoryFS {
     if (detectedConflicts.length > 0) {
       const conflictReason = summarizeConflictReasons(detectedConflicts);
       this.markCandidateConflict(workspaceId, candidate.node.id, detectedConflicts.map((conflict) => conflict.node_id), conflictReason, reviewer);
-      throw new MemoryFSError("Conflicting candidates require resolution before approval.", 409);
+      throw new VeriFSError("Conflicting candidates require resolution before approval.", 409);
     }
     if (!promotionId) {
       if (!targetPath) {
-        throw new MemoryFSError("Approving a candidate requires a promotion target path.");
+        throw new VeriFSError("Approving a candidate requires a promotion target path.");
       }
       const promotion = this.createPromotionForCandidateNode(workspaceId, candidate.node, {
         target_path: targetPath,
@@ -3895,10 +3895,10 @@ export class MemoryFS {
     const candidate = this.getCandidate(workspaceId, candidateId);
     const actor = input.actor ?? input.reviewer ?? "human:reviewer";
     if (!isCandidateConflictResolutionMode(input.mode)) {
-      throw new MemoryFSError("Candidate conflict resolution mode must be keep_new, keep_old, keep_both, or mark_superseded.");
+      throw new VeriFSError("Candidate conflict resolution mode must be keep_new, keep_old, keep_both, or mark_superseded.");
     }
     if (candidate.status !== "conflicted" && !candidate.conflict_reason && candidate.conflicts_with.length === 0) {
-      throw new MemoryFSError("Candidate has no conflicts to resolve.");
+      throw new VeriFSError("Candidate has no conflicts to resolve.");
     }
     const reason = input.reason?.trim() || `Resolved candidate conflict with mode ${input.mode}.`;
     const conflictsWith = candidate.conflicts_with;
@@ -3963,7 +3963,7 @@ export class MemoryFS {
   ): Promise<MemoryPromotion> {
     const promotion = this.getPromotion(workspaceId, promotionId);
     if (promotion.status === "rejected") {
-      throw new MemoryFSError("Rejected promotions cannot be approved.");
+      throw new VeriFSError("Rejected promotions cannot be approved.");
     }
 
     if (promotion.candidate_node_id) {
@@ -3975,7 +3975,7 @@ export class MemoryFS {
           promotion_id: promotion.id,
           comment: comment ?? null
         });
-        throw new MemoryFSError("Duplicate candidates must be edited or rejected before approval.", 409);
+        throw new VeriFSError("Duplicate candidates must be edited or rejected before approval.", 409);
       }
       if (candidateNode.status === "conflicted" || candidateNode.conflict_reason) {
         this.audit(workspaceId, reviewer, "candidate.approval_blocked_conflict", {
@@ -3985,7 +3985,7 @@ export class MemoryFS {
           promotion_id: promotion.id,
           comment: comment ?? null
         });
-        throw new MemoryFSError("Conflicting candidates require resolution before approval.", 409);
+        throw new VeriFSError("Conflicting candidates require resolution before approval.", 409);
       }
       const detectedConflicts = await this.detectApprovalConflicts(
         workspaceId,
@@ -4002,7 +4002,7 @@ export class MemoryFS {
           conflictReason,
           reviewer
         );
-        throw new MemoryFSError("Conflicting candidates require resolution before approval.", 409);
+        throw new VeriFSError("Conflicting candidates require resolution before approval.", 409);
       }
     }
 
@@ -4028,7 +4028,7 @@ export class MemoryFS {
   rejectPromotion(workspaceId: string, promotionId: string, reviewer = "human:reviewer", comment?: string): MemoryPromotion {
     const promotion = this.getPromotion(workspaceId, promotionId);
     if (promotion.status === "applied") {
-      throw new MemoryFSError("Applied promotions cannot be rejected.");
+      throw new VeriFSError("Applied promotions cannot be rejected.");
     }
 
     this.updatePromotionStatus(workspaceId, promotionId, "rejected", reviewer);
@@ -4051,11 +4051,11 @@ export class MemoryFS {
   async applyPromotion(workspaceId: string, promotionId: string, actor = "human:reviewer"): Promise<MemoryPromotion> {
     const promotion = this.getPromotion(workspaceId, promotionId);
     if (promotion.status === "rejected") {
-      throw new MemoryFSError("Rejected promotions cannot be applied.");
+      throw new VeriFSError("Rejected promotions cannot be applied.");
     }
     const protectedTarget = this.matchProtectedPath(workspaceId, promotion.target_path);
     if (protectedTarget && promotion.status !== "approved" && promotion.status !== "applied") {
-      throw new MemoryFSError("Protected promotion targets require approval before apply.", 403);
+      throw new VeriFSError("Protected promotion targets require approval before apply.", 403);
     }
     if (promotion.status === "applied") {
       return promotion;
@@ -4103,7 +4103,7 @@ export class MemoryFS {
     this.ensureAuthorized(workspaceId, input.actor ?? "human:snapshot", "snapshot.create");
     const name = input.name.trim();
     if (!name) {
-      throw new MemoryFSError("Snapshot name is required.");
+      throw new VeriFSError("Snapshot name is required.");
     }
 
     const snapshot: Snapshot = {
@@ -4144,7 +4144,7 @@ export class MemoryFS {
       .prepare("SELECT * FROM snapshots WHERE workspace_id = ? AND id = ?")
       .get(workspaceId, snapshotId) as Snapshot | undefined;
     if (!snapshot) {
-      throw new MemoryFSError("Snapshot not found.", 404);
+      throw new VeriFSError("Snapshot not found.", 404);
     }
     const items = this.db
       .prepare("SELECT * FROM snapshot_items WHERE snapshot_id = ? ORDER BY item_type, item_id")
@@ -4321,7 +4321,7 @@ export class MemoryFS {
         title: input.title ?? null,
         risk
       });
-      throw new MemoryFSError(`Archive content appears to contain a secret (${risk}). Remove the secret before importing.`, 422);
+      throw new VeriFSError(`Archive content appears to contain a secret (${risk}). Remove the secret before importing.`, 422);
     }
 
     await this.ensureArchiveReadme(workspaceId, actor);
@@ -4435,7 +4435,7 @@ export class MemoryFS {
 
     const now = isoNow();
     const nodeId = randomUUID();
-    const rawRef = `memoryfs://${workspaceId}${file.path}#${file.current_blob_sha256}`;
+    const rawRef = `verifs://${workspaceId}${file.path}#${file.current_blob_sha256}`;
     const trustLevel = trustLevelForPath(file.path);
     const ttlExpiresAt = ttlForPath(file.path);
     const scope = scopeMetadataForPath(file.path);
@@ -4878,7 +4878,7 @@ export class MemoryFS {
   ): Promise<MemoryNode> {
     const now = isoNow();
     const nodeId = randomUUID();
-    const rawRef = `memoryfs://${workspaceId}${file.path}#${file.current_blob_sha256}`;
+    const rawRef = `verifs://${workspaceId}${file.path}#${file.current_blob_sha256}`;
     const scope = options.scope ?? scopeMetadataForPath(file.path);
     const review = options.detect_candidate_review === false
       ? emptyCandidateReviewDetection()
@@ -4966,7 +4966,7 @@ export class MemoryFS {
   ): Promise<MemoryNode> {
     const now = isoNow();
     const nodeId = randomUUID();
-    const rawRef = `memoryfs://${workspaceId}${file.path}#${file.current_blob_sha256}`;
+    const rawRef = `verifs://${workspaceId}${file.path}#${file.current_blob_sha256}`;
     const scope = scopeMetadataForPath(file.path);
     const review = await this.detectCandidateReview(workspaceId, extractedNode, file, {
       scope,
@@ -6276,7 +6276,7 @@ export class MemoryFS {
       | BlobRecord
       | undefined;
     if (!blob) {
-      throw new MemoryFSError("Blob not found.", 404);
+      throw new VeriFSError("Blob not found.", 404);
     }
     return blob;
   }
@@ -6306,7 +6306,7 @@ export class MemoryFS {
     const root = path.resolve(this.workspacesDir, workspaceId);
     const absolutePath = path.resolve(root, filePath.replace(/^\/+/, ""));
     if (!absolutePath.startsWith(`${root}${path.sep}`) && absolutePath !== root) {
-      throw new MemoryFSError("Path escapes workspace root.");
+      throw new VeriFSError("Path escapes workspace root.");
     }
     return absolutePath;
   }
@@ -6317,7 +6317,7 @@ export class MemoryFS {
       .prepare("SELECT * FROM files WHERE workspace_id = ? AND path = ?")
       .get(workspaceId, normalizedPath) as FileRecord | undefined;
     if (!file) {
-      throw new MemoryFSError("File not found.", 404);
+      throw new VeriFSError("File not found.", 404);
     }
     return file;
   }
@@ -6335,7 +6335,7 @@ export class MemoryFS {
       .prepare("SELECT * FROM files WHERE workspace_id = ? AND id = ?")
       .get(workspaceId, fileId) as FileRecord | undefined;
     if (!file) {
-      throw new MemoryFSError("File not found.", 404);
+      throw new VeriFSError("File not found.", 404);
     }
     return file;
   }
@@ -6463,7 +6463,7 @@ export class MemoryFS {
   private upsertUser(handle: string, displayName: string | null): { id: string; handle: string; display_name: string | null } {
     const normalized = handle.trim();
     if (!normalized) {
-      throw new MemoryFSError("User handle is required.");
+      throw new VeriFSError("User handle is required.");
     }
     const existing = this.db.prepare("SELECT * FROM users WHERE handle = ?").get(normalized) as
       | { id: string; handle: string; display_name: string | null }
@@ -6490,7 +6490,7 @@ export class MemoryFS {
   private roleId(role: TeamRole): string {
     const row = this.db.prepare("SELECT id FROM roles WHERE name = ?").get(role) as { id: string } | undefined;
     if (!row) {
-      throw new MemoryFSError(`Unknown role: ${role}`);
+      throw new VeriFSError(`Unknown role: ${role}`);
     }
     return row.id;
   }
@@ -6513,7 +6513,7 @@ export class MemoryFS {
       )
       .get(workspaceId, handle) as TeamMember | undefined;
     if (!member) {
-      throw new MemoryFSError("Workspace member not found.", 404);
+      throw new VeriFSError("Workspace member not found.", 404);
     }
     return member;
   }
@@ -6542,7 +6542,7 @@ export class MemoryFS {
       const allowed = this.authzProvider.can({ actor, action, workspaceId, path: filePath });
       if (typeof allowed === "boolean" && allowed) return;
       if (typeof allowed === "boolean" && !allowed) {
-        throw new MemoryFSError(`Actor ${actor} is not allowed to perform ${action}.`, 403);
+        throw new VeriFSError(`Actor ${actor} is not allowed to perform ${action}.`, 403);
       }
     }
     const memberCount = Number(
@@ -6551,7 +6551,7 @@ export class MemoryFS {
     if (memberCount === 0 && (action === "workspace.read" || action === "snapshot.create")) return;
     const role = this.actorRole(workspaceId, actor);
     if (!role || !roleCan(role, action, filePath, Boolean(filePath && this.matchProtectedPath(workspaceId, filePath)))) {
-      throw new MemoryFSError(`Actor ${actor} is not allowed to perform ${action}.`, 403);
+      throw new VeriFSError(`Actor ${actor} is not allowed to perform ${action}.`, 403);
     }
   }
 
@@ -6563,7 +6563,7 @@ export class MemoryFS {
     if (memberCount === 0) return;
     const role = this.actorRole(workspaceId, actor);
     if (role !== "owner" && role !== "admin") {
-      throw new MemoryFSError(`Actor ${actor} is not allowed to manage workspace members.`, 403);
+      throw new VeriFSError(`Actor ${actor} is not allowed to manage workspace members.`, 403);
     }
   }
 
@@ -6674,7 +6674,7 @@ export class MemoryFS {
       .prepare("SELECT * FROM conflict_records WHERE workspace_id = ? AND id = ?")
       .get(workspaceId, conflictId) as ConflictRecord | undefined;
     if (!conflict) {
-      throw new MemoryFSError("Conflict not found.", 404);
+      throw new VeriFSError("Conflict not found.", 404);
     }
     return conflict;
   }
@@ -6734,25 +6734,25 @@ export class MemoryFS {
 
 export function normalizeMemoryPath(inputPath: string): string {
   if (typeof inputPath !== "string" || !inputPath.trim()) {
-    throw new MemoryFSError("Path is required.");
+    throw new VeriFSError("Path is required.");
   }
 
   if (inputPath.includes("\0")) {
-    throw new MemoryFSError("Path cannot include null bytes.");
+    throw new VeriFSError("Path cannot include null bytes.");
   }
 
   if (!inputPath.startsWith("/")) {
-    throw new MemoryFSError("MemoryFS paths must start with '/'.");
+    throw new VeriFSError("VeriFS paths must start with '/'.");
   }
 
   const parts = inputPath.split(/[\\/]+/);
   if (parts.includes("..")) {
-    throw new MemoryFSError("Path traversal is not allowed.");
+    throw new VeriFSError("Path traversal is not allowed.");
   }
 
   const normalized = path.posix.normalize(inputPath.replace(/\\/g, "/"));
   if (!normalized.startsWith("/")) {
-    throw new MemoryFSError("MemoryFS paths must stay absolute.");
+    throw new VeriFSError("VeriFS paths must stay absolute.");
   }
 
   return normalized;
@@ -7072,7 +7072,7 @@ function isCandidateConflictResolutionMode(value: string): value is CandidateCon
 
 function normalizeMemoryRelationType(value: string): MemoryRelationType {
   if (memoryRelationTypes.includes(value as MemoryRelationType)) return value as MemoryRelationType;
-  throw new MemoryFSError(`Unsupported memory graph relation: ${value}.`);
+  throw new VeriFSError(`Unsupported memory graph relation: ${value}.`);
 }
 
 function isMemoryNodeGraphType(type: MemoryGraphObjectType): boolean {
@@ -7729,7 +7729,7 @@ function trustLevelForPath(filePath: string): MemoryTrustLevel {
 }
 
 function rawRefForFile(workspaceId: string, file: FileRecord): string {
-  return `memoryfs://${workspaceId}${file.path}#${file.current_blob_sha256}`;
+  return `verifs://${workspaceId}${file.path}#${file.current_blob_sha256}`;
 }
 
 type MemoryScopeMetadata = Pick<
@@ -7879,7 +7879,7 @@ function normalizeArchiveEntryType(value: string): ArchiveEntryType {
   if (value === "conversation" || value === "transcript" || value === "imported" || value === "agent-run" || value === "raw") {
     return value;
   }
-  throw new MemoryFSError(`Unsupported archive type: ${value}.`);
+  throw new VeriFSError(`Unsupported archive type: ${value}.`);
 }
 
 function archiveDirectoryForType(archiveType: ArchiveEntryType): string {

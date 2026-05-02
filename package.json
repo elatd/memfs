@@ -1,5 +1,5 @@
 {
-  "name": "memoryfs",
+  "name": "verifs",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
@@ -9,15 +9,15 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "concurrently -k -n api,web -c cyan,green \"pnpm --filter @memoryfs/api dev\" \"pnpm --filter @memoryfs/web dev\"",
+    "dev": "concurrently -k -n api,web -c cyan,green \"pnpm --filter @verifs/api dev\" \"pnpm --filter @verifs/web dev\"",
     "test": "vitest run",
     "typecheck": "pnpm -r build",
     "build": "pnpm -r build",
     "demo:seed": "tsx scripts/demo-seed.ts",
     "bench:smoke": "tsx benchmarks/src/runners/run-smoke.ts",
-    "bench:memfs": "tsx benchmarks/src/runners/run-memfs-regression.ts",
+    "bench:verifs": "tsx benchmarks/src/runners/run-verifs-regression.ts",
     "benchmark:smoke": "pnpm bench:smoke",
-    "benchmark:memfs": "pnpm bench:memfs",
+    "benchmark:verifs": "pnpm bench:verifs",
     "benchmark:retrieval": "tsx benchmarks/retrieval/index.ts",
     "mount:smoke:readwrite": "tsx scripts/mount-smoke-readwrite.ts"
   },
@@ -27,9 +27,10 @@
     }
   },
   "dependencies": {
-    "@memoryfs/core": "workspace:*"
+    "@verifs/core": "workspace:*"
   },
   "devDependencies": {
+    "@verifs/cli": "workspace:*",
     "@types/node": "^22.10.2",
     "concurrently": "^9.1.2",
     "tsx": "^4.19.2",

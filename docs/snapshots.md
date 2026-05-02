@@ -13,19 +13,19 @@ Captured item types:
 Create:
 
 ```bash
-memfs snapshot create before-review
+verifs snapshot create before-review
 ```
 
 Diff:
 
 ```bash
-memfs snapshot diff <snapshot_id>
+verifs snapshot diff <snapshot_id>
 ```
 
 Dry-run rollback:
 
 ```bash
-memfs rollback <snapshot_id> --dry-run
+verifs rollback <snapshot_id> --dry-run
 ```
 
 Rollback restores captured tables, rewrites workspace files, rebuilds embeddings, and emits `snapshot_rollback`. Audit history is not erased.

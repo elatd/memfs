@@ -340,7 +340,7 @@ export const pdfExtractor: FileExtractor = {
             .join(" ")
             .replace(/\s+/g, " ")
             .trim();
-          return `\n\n[[MEMFS_PDF_PAGE:${pageNumber}]]\n${text}`;
+          return `\n\n[[VERIFS_PDF_PAGE:${pageNumber}]]\n${text}`;
         }
       });
       const parsedText = String(parsed.text ?? "");
@@ -473,7 +473,7 @@ async function loadPdfParse(): Promise<PdfParse> {
 
 function pdfPageSections(text: string): ExtractedSection[] {
   const sections: ExtractedSection[] = [];
-  const markerPattern = /\[\[MEMFS_PDF_PAGE:(\d+)]]\n([\s\S]*?)(?=\n+\[\[MEMFS_PDF_PAGE:|$)/g;
+  const markerPattern = /\[\[VERIFS_PDF_PAGE:(\d+)]]\n([\s\S]*?)(?=\n+\[\[VERIFS_PDF_PAGE:|$)/g;
   for (const match of text.matchAll(markerPattern)) {
     const page = Number(match[1]);
     const body = (match[2] ?? "").replace(/\s+/g, " ").trim();
@@ -493,7 +493,7 @@ function pdfPageSections(text: string): ExtractedSection[] {
 }
 
 function stripPdfMarkers(text: string): string {
-  return text.replace(/\[\[MEMFS_PDF_PAGE:\d+]]\n/g, "").replace(/[ \t]+\n/g, "\n");
+  return text.replace(/\[\[VERIFS_PDF_PAGE:\d+]]\n/g, "").replace(/[ \t]+\n/g, "\n");
 }
 
 function extractSimplePdfText(bytes: Buffer): { text: string; sections: ExtractedSection[]; pageCount: number } {

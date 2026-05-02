@@ -1,5 +1,5 @@
 {
-  "name": "@memoryfs/core",
+  "name": "@verifs/core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@memoryfs/db": "workspace:*",
-    "@memoryfs/memory": "workspace:*"
+    "@verifs/db": "workspace:*",
+    "@verifs/memory": "workspace:*"
   }
 }

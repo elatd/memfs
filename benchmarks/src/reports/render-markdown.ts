@@ -9,7 +9,7 @@ export async function renderMarkdown(path: string, result: SmokeBenchmarkResult)
 
 function toMarkdown(result: SmokeBenchmarkResult): string {
   const lines = [
-    "# MemFS Smoke Benchmark Report",
+    "# VeriFS Smoke Benchmark Report",
     "",
     `Generated: ${result.generated_at}`,
     "",

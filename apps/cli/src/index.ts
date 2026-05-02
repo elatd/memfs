@@ -10,9 +10,9 @@ import {
   type MemoryRelationType,
   type MemoryScope,
   type MemoryTrustLevel
-} from "@memoryfs/core";
-import { MemoryFSClient, MemoryFSNotFoundError } from "@memoryfs/sdk";
-import { listMountRegistry, runMountd, unmountMount, type MountRegistryEntry } from "@memoryfs/mountd";
+} from "@verifs/core";
+import { VeriFSClient, VeriFSNotFoundError } from "@verifs/sdk";
+import { listMountRegistry, runMountd, unmountMount, type MountRegistryEntry } from "@verifs/mountd";
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -354,7 +354,7 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
   };
   const parsed = parseArgs(argv);
   const [root, subcommand, ...rest] = parsed.args;
-  const client = new MemoryFSClient(env.MEMFS_API_URL ?? defaultApiUrl);
+  const client = new VeriFSClient(env.VERIFS_API_URL ?? defaultApiUrl);
 
   try {
     switch (root) {
@@ -366,7 +366,7 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
         return 0;
       case "init":
         await writeConfig(env, {});
-        output(io, parsed, `MemFS config initialized at ${configPath(env)}`, {
+        output(io, parsed, `VeriFS config initialized at ${configPath(env)}`, {
           config_path: configPath(env)
         });
         return 0;
@@ -375,7 +375,7 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
       case "workspace":
         return await workspaceCommand(client, env, io, parsed, subcommand, rest);
       case "use":
-        return await useWorkspace(client, env, io, parsed, required(subcommand, "memfs use requires a workspace name or id."));
+        return await useWorkspace(client, env, io, parsed, required(subcommand, "verifs use requires a workspace name or id."));
       case "ls":
         return await withWorkspace(env, async (workspaceId) => {
           const prefix = subcommand ?? "/";
@@ -389,7 +389,7 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
         return await withWorkspace(env, async (workspaceId) => {
           const response = (await client.readFile(
             workspaceId,
-            required(subcommand, "memfs cat requires a path.")
+            required(subcommand, "verifs cat requires a path.")
           )) as FileReadResponse;
           output(io, parsed, response.content, response);
         });
@@ -399,7 +399,7 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
         return await writeCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString), true);
       case "rm":
         return await withWorkspace(env, async (workspaceId) => {
-          const filePath = required(subcommand, "memfs rm requires a path.");
+          const filePath = required(subcommand, "verifs rm requires a path.");
           const response = await client.deleteFile(workspaceId, filePath, {
             actor: "human:cli",
             allow_protected_write: parsed.allowProtected
@@ -409,9 +409,9 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
       case "upload":
         return await uploadCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString));
       case "extract":
-        return await extractCommand(client, env, io, parsed, required(subcommand, "memfs extract requires a MemFS path."));
+        return await extractCommand(client, env, io, parsed, required(subcommand, "verifs extract requires a VeriFS path."));
       case "extracted":
-        return await extractedCommand(client, env, io, parsed, required(subcommand, "memfs extracted requires a MemFS path."));
+        return await extractedCommand(client, env, io, parsed, required(subcommand, "verifs extracted requires a VeriFS path."));
       case "grep":
         return await memoryGrepCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString), "grep", "literal");
       case "search":
@@ -424,7 +424,7 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
         return await nodeCommand(client, env, io, parsed, "list", [subcommand, ...rest].filter(isString));
       case "raw":
         return await withWorkspace(env, async (workspaceId) => {
-          const nodeId = required(subcommand, "memfs raw requires a node id.");
+          const nodeId = required(subcommand, "verifs raw requires a node id.");
           const response = (await client.readRaw(workspaceId, nodeId)) as { content: string };
           output(io, parsed, response.content, response);
         });
@@ -443,13 +443,13 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
       case "graph":
         return await graphCommand(client, env, io, parsed, subcommand, rest);
       case "approve":
-        return await approvalCommand(client, env, io, parsed, required(subcommand, "memfs approve requires a promotion id."), true);
+        return await approvalCommand(client, env, io, parsed, required(subcommand, "verifs approve requires a promotion id."), true);
       case "reject":
-        return await approvalCommand(client, env, io, parsed, required(subcommand, "memfs reject requires a promotion id."), false);
+        return await approvalCommand(client, env, io, parsed, required(subcommand, "verifs reject requires a promotion id."), false);
       case "snapshot":
         return await snapshotCommand(client, env, io, parsed, subcommand, rest);
       case "rollback":
-        return await rollbackCommand(client, env, io, parsed, required(subcommand, "memfs rollback requires a snapshot id."));
+        return await rollbackCommand(client, env, io, parsed, required(subcommand, "verifs rollback requires a snapshot id."));
       case "health":
         return await healthCommand(client, env, io, parsed);
       case "brief":
@@ -471,7 +471,7 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
       case "mount":
         return await mountCommand(env, io, parsed, subcommand, rest);
       case "unmount":
-        return await unmountCommand(env, io, parsed, required(subcommand, "memfs unmount requires a mountpoint."));
+        return await unmountCommand(env, io, parsed, required(subcommand, "verifs unmount requires a mountpoint."));
       default:
         throw new Error(`Unknown command: ${root}\n\n${helpText()}`);
     }
@@ -499,14 +499,14 @@ async function mountCommand(
     return 0;
   }
 
-  const workspace = required(subcommand, "memfs mount requires a workspace name or id.");
-  const mountpoint = required(rest[0], "memfs mount requires a mountpoint.");
+  const workspace = required(subcommand, "verifs mount requires a workspace name or id.");
+  const mountpoint = required(rest[0], "verifs mount requires a mountpoint.");
   const mountArgs = [workspace, mountpoint, ...rest.slice(1)];
   if (parsed.allowProtected && !mountArgs.includes("--allow-protected-write")) {
     mountArgs.push("--allow-protected-write");
   }
   if (!mountArgs.includes("--api-url")) {
-    mountArgs.push("--api-url", env.MEMFS_API_URL ?? defaultApiUrl);
+    mountArgs.push("--api-url", env.VERIFS_API_URL ?? defaultApiUrl);
   }
 
   if (mountArgs.includes("--daemon")) {
@@ -541,7 +541,7 @@ async function unmountCommand(
 }
 
 async function briefCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -549,7 +549,7 @@ async function briefCommand(
 ): Promise<number> {
   return withWorkspace(env, async (workspaceId) => {
     const briefArgs = parseBriefArgs(args);
-    const cleaned = required(briefArgs.task.trim(), "memfs brief requires a task.");
+    const cleaned = required(briefArgs.task.trim(), "verifs brief requires a task.");
     const response = (await client.createBrief(workspaceId, cleaned, {
       actor: "human:cli",
       project_hint: briefArgs.project_slug,
@@ -570,7 +570,7 @@ async function briefCommand(
 }
 
 async function runCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -579,7 +579,7 @@ async function runCommand(
 ): Promise<number> {
   if (subcommand === "create") {
     return withWorkspace(env, async (workspaceId) => {
-      const task = required(rest.join(" ").trim(), "memfs run create requires a task.");
+      const task = required(rest.join(" ").trim(), "verifs run create requires a task.");
       const run = (await client.createRun(workspaceId, task, { actor: "human:cli" })) as AgentRun;
       output(io, parsed, formatRun(run), run);
     });
@@ -587,7 +587,7 @@ async function runCommand(
 
   if (subcommand === "complete") {
     return withWorkspace(env, async (workspaceId) => {
-      const runId = required(rest[0], "memfs run complete requires a run id.");
+      const runId = required(rest[0], "verifs run complete requires a run id.");
       const result = rest.slice(1).join(" ");
       const run = (await client.completeRun(workspaceId, runId, {
         actor: "human:cli",
@@ -599,7 +599,7 @@ async function runCommand(
 
   if (subcommand === "compile") {
     return withWorkspace(env, async (workspaceId) => {
-      const runId = required(rest[0], "memfs run compile requires a run id.");
+      const runId = required(rest[0], "verifs run compile requires a run id.");
       const response = await client.compileRun(workspaceId, runId, {
         actor: "human:cli",
         reasoning: rest.includes("--reasoning")
@@ -610,7 +610,7 @@ async function runCommand(
 
   if (subcommand === "lessons") {
     return withWorkspace(env, async (workspaceId) => {
-      const runId = required(rest[0], "memfs run lessons requires a run id.");
+      const runId = required(rest[0], "verifs run lessons requires a run id.");
       const lessons = (await client.listRunLessons(workspaceId, runId)) as ReasoningMemoryCandidate[];
       output(io, parsed, lessons.map(formatReasoningLesson).join("\n\n") || "(no reasoning lessons)", lessons);
     });
@@ -618,14 +618,14 @@ async function runCommand(
 
   if (subcommand === "show") {
     return withWorkspace(env, async (workspaceId) => {
-      const runId = required(rest[0], "memfs run show requires a run id.");
+      const runId = required(rest[0], "verifs run show requires a run id.");
       const response = await client.readRun(workspaceId, runId);
       output(io, parsed, JSON.stringify(response, null, 2), response);
     });
   }
 
   if (subcommand === "path") {
-    const runId = required(rest[0], "memfs run path requires a run id.");
+    const runId = required(rest[0], "verifs run path requires a run id.");
     output(io, parsed, `/runs/${runId}`, { path: `/runs/${runId}` });
     return 0;
   }
@@ -636,11 +636,11 @@ async function runCommand(
     return 0;
   }
 
-  throw new Error("Usage: memfs run create <task> | memfs run complete <run_id> | memfs run compile <run_id> [--reasoning] | memfs run lessons <run_id> | memfs run show <run_id> | memfs run path <run_id> | memfs run today");
+  throw new Error("Usage: verifs run create <task> | verifs run complete <run_id> | verifs run compile <run_id> [--reasoning] | verifs run lessons <run_id> | verifs run show <run_id> | verifs run path <run_id> | verifs run today");
 }
 
 async function runsCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs
@@ -652,7 +652,7 @@ async function runsCommand(
 }
 
 async function archiveCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -661,7 +661,7 @@ async function archiveCommand(
 ): Promise<number> {
   if (subcommand === "add") {
     return withWorkspace(env, async (workspaceId) => {
-      const localPath = required(rest[0], "memfs archive add requires a local text file.");
+      const localPath = required(rest[0], "verifs archive add requires a local text file.");
       const content = await readFile(localPath, "utf8");
       const archiveType = optionValue(rest, "--type") ?? "imported";
       const title = optionValue(rest, "--title") ?? path.basename(localPath);
@@ -684,7 +684,7 @@ async function archiveCommand(
 
   if (subcommand === "show") {
     return withWorkspace(env, async (workspaceId) => {
-      const archiveId = required(rest[0], "memfs archive show requires an archive id.");
+      const archiveId = required(rest[0], "verifs archive show requires an archive id.");
       const response = (await client.readArchive(workspaceId, archiveId)) as ArchiveReadResponse;
       output(io, parsed, response.content, response);
     });
@@ -692,7 +692,7 @@ async function archiveCommand(
 
   if (subcommand === "extract") {
     return withWorkspace(env, async (workspaceId) => {
-      const archiveId = required(rest[0], "memfs archive extract requires an archive id.");
+      const archiveId = required(rest[0], "verifs archive extract requires an archive id.");
       const response = (await client.extractArchive(workspaceId, archiveId, {
         actor: "human:cli"
       })) as ArchiveExtractResponse;
@@ -702,7 +702,7 @@ async function archiveCommand(
 
   if (subcommand === "search") {
     return withWorkspace(env, async (workspaceId) => {
-      const query = required(rest.join(" ").trim(), "memfs archive search requires a query.");
+      const query = required(rest.join(" ").trim(), "verifs archive search requires a query.");
       const response = (await client.searchArchive(workspaceId, query, {
         mode: "hybrid",
         scope: ["archive"],
@@ -712,11 +712,11 @@ async function archiveCommand(
     });
   }
 
-  throw new Error("Usage: memfs archive add <local_path> --type conversation|transcript|imported|agent-run|raw --title <title> | memfs archive list | memfs archive show <archive_id> | memfs archive extract <archive_id> | memfs archive search <query>");
+  throw new Error("Usage: verifs archive add <local_path> --type conversation|transcript|imported|agent-run|raw --title <title> | verifs archive list | verifs archive show <archive_id> | verifs archive extract <archive_id> | verifs archive search <query>");
 }
 
 async function handoffCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -733,7 +733,7 @@ async function handoffCommand(
 }
 
 async function staleCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs
@@ -745,7 +745,7 @@ async function staleCommand(
 }
 
 async function syncCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -782,7 +782,7 @@ async function syncCommand(
 
   if (subcommand === "resolve") {
     return withWorkspace(env, async (workspaceId) => {
-      const conflictId = required(rest[0], "memfs sync resolve requires a conflict id.");
+      const conflictId = required(rest[0], "verifs sync resolve requires a conflict id.");
       const mode = (optionValue(parsed.args, "--mode") ?? "keep_both") as
         | "keep_local"
         | "keep_remote"
@@ -796,11 +796,11 @@ async function syncCommand(
     });
   }
 
-  throw new Error("Usage: memfs sync status | memfs sync pull | memfs sync push | memfs sync conflicts | memfs sync resolve <conflict_id> --mode keep_local|keep_remote|keep_both");
+  throw new Error("Usage: verifs sync status | verifs sync pull | verifs sync push | verifs sync conflicts | verifs sync resolve <conflict_id> --mode keep_local|keep_remote|keep_both");
 }
 
 async function teamCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -816,7 +816,7 @@ async function teamCommand(
 
   if (subcommand === "invite") {
     return withWorkspace(env, async (workspaceId) => {
-      const handle = required(rest[0], "memfs team invite requires a handle.");
+      const handle = required(rest[0], "verifs team invite requires a handle.");
       const role = (optionValue(parsed.args, "--role") ?? "viewer") as "owner" | "admin" | "editor" | "agent" | "viewer";
       const member = (await client.addTeamMember(workspaceId, {
         handle,
@@ -829,8 +829,8 @@ async function teamCommand(
 
   if (subcommand === "role" && rest[0] === "set") {
     return withWorkspace(env, async (workspaceId) => {
-      const handle = required(rest[1], "memfs team role set requires a handle.");
-      const role = required(rest[2], "memfs team role set requires a role.") as "owner" | "admin" | "editor" | "agent" | "viewer";
+      const handle = required(rest[1], "verifs team role set requires a handle.");
+      const role = required(rest[2], "verifs team role set requires a role.") as "owner" | "admin" | "editor" | "agent" | "viewer";
       const member = (await client.setTeamRole(workspaceId, {
         handle,
         role,
@@ -840,19 +840,19 @@ async function teamCommand(
     });
   }
 
-  throw new Error("Usage: memfs team members | memfs team invite <handle> --role viewer|agent|editor|admin|owner | memfs team role set <handle> <role>");
+  throw new Error("Usage: verifs team members | verifs team invite <handle> --role viewer|agent|editor|admin|owner | verifs team role set <handle> <role>");
 }
 
 async function promoteCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
   args: string[]
 ): Promise<number> {
   return withWorkspace(env, async (workspaceId) => {
-    const sourcePath = required(args[0], "memfs promote requires a source path.");
-    const targetPath = required(optionValue(args, "--to"), "memfs promote requires --to <target_path>.");
+    const sourcePath = required(args[0], "verifs promote requires a source path.");
+    const targetPath = required(optionValue(args, "--to"), "verifs promote requires --to <target_path>.");
     const promotion = (await client.promoteMemory(workspaceId, sourcePath, targetPath, {
       actor: "human:cli",
       reason: optionValue(args, "--reason"),
@@ -864,7 +864,7 @@ async function promoteCommand(
 }
 
 async function promotionsCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs
@@ -881,7 +881,7 @@ async function promotionsCommand(
 }
 
 async function candidatesCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -894,7 +894,7 @@ async function candidatesCommand(
 }
 
 async function candidateCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -903,7 +903,7 @@ async function candidateCommand(
 ): Promise<number> {
   if (subcommand === "show") {
     return withWorkspace(env, async (workspaceId) => {
-      const id = required(rest[0], "memfs candidate show requires a candidate id.");
+      const id = required(rest[0], "verifs candidate show requires a candidate id.");
       const candidate = (await client.readCandidate(workspaceId, id)) as MemoryCandidate;
       output(io, parsed, formatCandidate(candidate), candidate);
     });
@@ -911,10 +911,10 @@ async function candidateCommand(
 
   if (subcommand === "edit") {
     return withWorkspace(env, async (workspaceId) => {
-      const id = required(rest[0], "memfs candidate edit requires a candidate id.");
+      const id = required(rest[0], "verifs candidate edit requires a candidate id.");
       const body = candidateEditBody(rest.slice(1));
       if (Object.keys(body).length === 1 && body.actor) {
-        throw new Error("Usage: memfs candidate edit <id> [--summary <text>] [--detail <text>] [--status stale|conflicted|candidate|observed|superseded] [--target <path>] [--reason <text>]");
+        throw new Error("Usage: verifs candidate edit <id> [--summary <text>] [--detail <text>] [--status stale|conflicted|candidate|observed|superseded] [--target <path>] [--reason <text>]");
       }
       const candidate = (await client.updateCandidate(workspaceId, id, body)) as MemoryCandidate;
       output(io, parsed, formatCandidate(candidate), candidate);
@@ -923,7 +923,7 @@ async function candidateCommand(
 
   if (subcommand === "approve") {
     return withWorkspace(env, async (workspaceId) => {
-      const id = required(rest[0], "memfs candidate approve requires a candidate id.");
+      const id = required(rest[0], "verifs candidate approve requires a candidate id.");
       const candidate = (await client.approveCandidate(workspaceId, id, {
         reviewer: "human:cli",
         comment: optionValue(rest, "--comment"),
@@ -936,7 +936,7 @@ async function candidateCommand(
 
   if (subcommand === "reject") {
     return withWorkspace(env, async (workspaceId) => {
-      const id = required(rest[0], "memfs candidate reject requires a candidate id.");
+      const id = required(rest[0], "verifs candidate reject requires a candidate id.");
       const candidate = (await client.rejectCandidate(workspaceId, id, {
         reviewer: "human:cli",
         comment: optionValue(rest, "--comment")
@@ -947,10 +947,10 @@ async function candidateCommand(
 
   if (subcommand === "resolve-conflict") {
     return withWorkspace(env, async (workspaceId) => {
-      const id = required(rest[0], "memfs candidate resolve-conflict requires a candidate id.");
-      const mode = required(optionValue(rest, "--mode"), "memfs candidate resolve-conflict requires --mode keep_new|keep_old|keep_both|mark_superseded.");
+      const id = required(rest[0], "verifs candidate resolve-conflict requires a candidate id.");
+      const mode = required(optionValue(rest, "--mode"), "verifs candidate resolve-conflict requires --mode keep_new|keep_old|keep_both|mark_superseded.");
       if (!["keep_new", "keep_old", "keep_both", "mark_superseded"].includes(mode)) {
-        throw new Error("memfs candidate resolve-conflict --mode must be keep_new, keep_old, keep_both, or mark_superseded.");
+        throw new Error("verifs candidate resolve-conflict --mode must be keep_new, keep_old, keep_both, or mark_superseded.");
       }
       const candidate = (await client.resolveCandidateConflict(workspaceId, id, {
         mode: mode as "keep_new" | "keep_old" | "keep_both" | "mark_superseded",
@@ -962,11 +962,11 @@ async function candidateCommand(
     });
   }
 
-  throw new Error("Usage: memfs candidate show|edit|approve|reject|resolve-conflict <candidate_id>");
+  throw new Error("Usage: verifs candidate show|edit|approve|reject|resolve-conflict <candidate_id>");
 }
 
 async function memoryCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -975,7 +975,7 @@ async function memoryCommand(
 ): Promise<number> {
   if (subcommand === "mark-stale") {
     return withWorkspace(env, async (workspaceId) => {
-      const nodeId = required(rest[0], "memfs memory mark-stale requires a node id.");
+      const nodeId = required(rest[0], "verifs memory mark-stale requires a node id.");
       const reason = (optionValue(rest, "--reason") ?? rest.slice(1).join(" ").trim()) || "Marked stale.";
       const node = (await client.markMemoryStale(workspaceId, nodeId, {
         actor: "human:cli",
@@ -987,7 +987,7 @@ async function memoryCommand(
 
   if (subcommand === "confirm") {
     return withWorkspace(env, async (workspaceId) => {
-      const nodeId = required(rest[0], "memfs memory confirm requires a node id.");
+      const nodeId = required(rest[0], "verifs memory confirm requires a node id.");
       const node = (await client.confirmMemory(workspaceId, nodeId, { actor: "human:cli" })) as MemoryNode;
       output(io, parsed, formatNode(node), node);
     });
@@ -995,8 +995,8 @@ async function memoryCommand(
 
   if (subcommand === "supersede") {
     return withWorkspace(env, async (workspaceId) => {
-      const oldNodeId = required(rest[0], "memfs memory supersede requires an old node id.");
-      const newNodeId = required(rest[1], "memfs memory supersede requires a new node id.");
+      const oldNodeId = required(rest[0], "verifs memory supersede requires an old node id.");
+      const newNodeId = required(rest[1], "verifs memory supersede requires a new node id.");
       const link = await client.supersedeMemory(workspaceId, oldNodeId, newNodeId, {
         actor: "human:cli",
         reason: optionValue(rest, "--reason")
@@ -1005,11 +1005,11 @@ async function memoryCommand(
     });
   }
 
-  throw new Error("Usage: memfs memory mark-stale <node_id> --reason <text> | memfs memory confirm <node_id> | memfs memory supersede <old_node_id> <new_node_id>");
+  throw new Error("Usage: verifs memory mark-stale <node_id> --reason <text> | verifs memory confirm <node_id> | verifs memory supersede <old_node_id> <new_node_id>");
 }
 
 async function graphCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -1018,7 +1018,7 @@ async function graphCommand(
 ): Promise<number> {
   if (subcommand === "node") {
     return withWorkspace(env, async (workspaceId) => {
-      const nodeId = required(rest[0], "memfs graph node requires a node id.");
+      const nodeId = required(rest[0], "verifs graph node requires a node id.");
       const response = (await client.getMemoryGraphNode(workspaceId, nodeId)) as MemoryGraphNodeResponse;
       output(io, parsed, formatGraphNode(response), response);
     });
@@ -1026,7 +1026,7 @@ async function graphCommand(
 
   if (subcommand === "related") {
     return withWorkspace(env, async (workspaceId) => {
-      const nodeId = required(rest[0], "memfs graph related requires a node id.");
+      const nodeId = required(rest[0], "verifs graph related requires a node id.");
       const response = (await client.findRelatedMemories(workspaceId, nodeId, graphRelatedOptions(rest.slice(1)))) as RelatedMemoryResult[];
       output(io, parsed, response.map(formatRelatedMemory).join("\n\n") || "(no related memories)", response);
     });
@@ -1034,9 +1034,9 @@ async function graphCommand(
 
   if (subcommand === "link") {
     return withWorkspace(env, async (workspaceId) => {
-      const fromId = required(rest[0], "memfs graph link requires a from id.");
-      const relationType = parseMemoryRelationType(required(rest[1], "memfs graph link requires a relation type."));
-      const toId = required(rest[2], "memfs graph link requires a to id.");
+      const fromId = required(rest[0], "verifs graph link requires a from id.");
+      const relationType = parseMemoryRelationType(required(rest[1], "verifs graph link requires a relation type."));
+      const toId = required(rest[2], "verifs graph link requires a to id.");
       const confidence = optionValue(rest, "--confidence");
       const edge = (await client.createGraphEdge(workspaceId, {
         from_type: parseGraphObjectType(optionValue(rest, "--from-type") ?? "memory_node"),
@@ -1055,7 +1055,7 @@ async function graphCommand(
 
   if (subcommand === "unlink") {
     return withWorkspace(env, async (workspaceId) => {
-      const edgeId = required(rest[0], "memfs graph unlink requires an edge id.");
+      const edgeId = required(rest[0], "verifs graph unlink requires an edge id.");
       const response = (await client.deleteGraphEdge(workspaceId, edgeId, { actor: "human:cli" })) as DeleteGraphEdgeResponse;
       output(io, parsed, `Deleted graph edge ${response.edge.id}`, response);
     });
@@ -1063,8 +1063,8 @@ async function graphCommand(
 
   if (subcommand === "path") {
     return withWorkspace(env, async (workspaceId) => {
-      const fromId = required(rest[0], "memfs graph path requires a from node id.");
-      const toId = required(rest[1], "memfs graph path requires a to node id.");
+      const fromId = required(rest[0], "verifs graph path requires a from node id.");
+      const toId = required(rest[1], "verifs graph path requires a to node id.");
       const maxDepth = optionValue(rest, "--max-depth");
       const response = (await client.explainGraphPath(workspaceId, fromId, toId, {
         max_depth: maxDepth ? Number(maxDepth) : undefined,
@@ -1074,11 +1074,11 @@ async function graphCommand(
     });
   }
 
-  throw new Error("Usage: memfs graph node <node_id> | memfs graph related <node_id> | memfs graph link <from> <type> <to> | memfs graph unlink <edge_id> | memfs graph path <from_node_id> <to_node_id>");
+  throw new Error("Usage: verifs graph node <node_id> | verifs graph related <node_id> | verifs graph link <from> <type> <to> | verifs graph unlink <edge_id> | verifs graph path <from_node_id> <to_node_id>");
 }
 
 async function approvalCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -1094,7 +1094,7 @@ async function approvalCommand(
 }
 
 async function snapshotCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -1103,7 +1103,7 @@ async function snapshotCommand(
 ): Promise<number> {
   if (subcommand === "create") {
     return withWorkspace(env, async (workspaceId) => {
-      const name = required(rest[0], "memfs snapshot create requires a name.");
+      const name = required(rest[0], "verifs snapshot create requires a name.");
       const snapshot = (await client.createSnapshot(workspaceId, name, { actor: "human:cli" })) as SnapshotRecord;
       output(io, parsed, formatSnapshot(snapshot), snapshot);
     });
@@ -1118,17 +1118,17 @@ async function snapshotCommand(
 
   if (subcommand === "diff") {
     return withWorkspace(env, async (workspaceId) => {
-      const snapshotId = required(rest[0], "memfs snapshot diff requires a snapshot id.");
+      const snapshotId = required(rest[0], "verifs snapshot diff requires a snapshot id.");
       const diff = await client.diffSnapshot(workspaceId, snapshotId);
       output(io, parsed, JSON.stringify(diff, null, 2), diff);
     });
   }
 
-  throw new Error("Usage: memfs snapshot create <name> | memfs snapshot list | memfs snapshot diff <snapshot_id>");
+  throw new Error("Usage: verifs snapshot create <name> | verifs snapshot list | verifs snapshot diff <snapshot_id>");
 }
 
 async function rollbackCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -1144,7 +1144,7 @@ async function rollbackCommand(
 }
 
 async function healthCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs
@@ -1156,7 +1156,7 @@ async function healthCommand(
 }
 
 async function status(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs
@@ -1165,15 +1165,15 @@ async function status(
   const workspaces = (await client.listWorkspaces()) as Workspace[];
   const selected = workspaces.find((workspace) => workspace.id === config.selectedWorkspaceId);
   const text = [
-    `API: ${env.MEMFS_API_URL ?? defaultApiUrl}`,
+    `API: ${env.VERIFS_API_URL ?? defaultApiUrl}`,
     `Config: ${configPath(env)}`,
     `Workspace: ${selected ? `${selected.name} (${selected.id})` : "none selected"}`,
-    selected ? "" : "Select one with: memfs workspace list && memfs use <workspace>"
+    selected ? "" : "Select one with: verifs workspace list && verifs use <workspace>"
   ]
     .filter(Boolean)
     .join("\n");
   output(io, parsed, text, {
-    api_url: env.MEMFS_API_URL ?? defaultApiUrl,
+    api_url: env.VERIFS_API_URL ?? defaultApiUrl,
     config_path: configPath(env),
     selected_workspace: selected ?? null
   });
@@ -1181,7 +1181,7 @@ async function status(
 }
 
 async function workspaceCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -1189,9 +1189,9 @@ async function workspaceCommand(
   rest: string[]
 ): Promise<number> {
   if (subcommand === "create") {
-    const name = required(rest[0], "memfs workspace create requires a name.");
+    const name = required(rest[0], "verifs workspace create requires a name.");
     const workspace = (await client.createWorkspace(name)) as Workspace;
-    output(io, parsed, `Created workspace ${workspace.name} (${workspace.id})\nSelect it with: memfs use ${workspace.name}`, workspace);
+    output(io, parsed, `Created workspace ${workspace.name} (${workspace.id})\nSelect it with: verifs use ${workspace.name}`, workspace);
     return 0;
   }
 
@@ -1206,11 +1206,11 @@ async function workspaceCommand(
     return 0;
   }
 
-  throw new Error("Usage: memfs workspace create <name> | memfs workspace list");
+  throw new Error("Usage: verifs workspace create <name> | verifs workspace list");
 }
 
 async function useWorkspace(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -1231,7 +1231,7 @@ async function useWorkspace(
 }
 
 async function writeCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -1239,10 +1239,10 @@ async function writeCommand(
   append: boolean
 ): Promise<number> {
   return withWorkspace(env, async (workspaceId) => {
-    const filePath = required(rest[0], `memfs ${append ? "append" : "write"} requires a path.`);
+    const filePath = required(rest[0], `verifs ${append ? "append" : "write"} requires a path.`);
     const content = rest.slice(1).join(" ");
     if (!content) {
-      throw new Error(`memfs ${append ? "append" : "write"} requires content.`);
+      throw new Error(`verifs ${append ? "append" : "write"} requires content.`);
     }
 
     const nextContent = append
@@ -1257,7 +1257,7 @@ async function writeCommand(
   });
 }
 
-async function readExistingContent(client: MemoryFSClient, workspaceId: string, filePath: string): Promise<string> {
+async function readExistingContent(client: VeriFSClient, workspaceId: string, filePath: string): Promise<string> {
   try {
     const existing = await client.readFile(workspaceId, filePath);
     return existing.content ? `${existing.content}\n` : "";
@@ -1268,14 +1268,14 @@ async function readExistingContent(client: MemoryFSClient, workspaceId: string, 
 }
 
 async function uploadCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
   args: string[]
 ): Promise<number> {
   return withWorkspace(env, async (workspaceId) => {
-    const localPath = required(args[0], "memfs upload requires a local file path.");
+    const localPath = required(args[0], "verifs upload requires a local file path.");
     const targetPath = optionValue(args, "--to") ?? `/uploads/${path.basename(localPath)}`;
     const bytes = await readFile(localPath);
     const response = await client.uploadFile(workspaceId, targetPath, bytes.toString("base64"), {
@@ -1289,7 +1289,7 @@ async function uploadCommand(
 }
 
 async function extractCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -1302,7 +1302,7 @@ async function extractCommand(
 }
 
 async function extractedCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -1325,7 +1325,7 @@ async function extractedCommand(
 }
 
 async function memoryGrepCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -1335,7 +1335,7 @@ async function memoryGrepCommand(
 ): Promise<number> {
   return withWorkspace(env, async (workspaceId) => {
     const grep = parseGrepArgs(args, defaultMode);
-    const cleaned = required(grep.query.trim(), `memfs ${commandName} requires a query.`);
+    const cleaned = required(grep.query.trim(), `verifs ${commandName} requires a query.`);
     const response = (await client.grepMemory(workspaceId, cleaned, {
       mode: grep.mode,
       scope: parseGrepScopes(grep.scope),
@@ -1357,7 +1357,7 @@ async function memoryGrepCommand(
 }
 
 async function recallCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -1365,7 +1365,7 @@ async function recallCommand(
 ): Promise<number> {
   return withWorkspace(env, async (workspaceId) => {
     const scoped = parseScopedQueryArgs(args);
-    const cleaned = required(scoped.query.trim(), "memfs recall requires a query.");
+    const cleaned = required(scoped.query.trim(), "verifs recall requires a query.");
     const response = (await client.recallMemory(workspaceId, cleaned, {
       include_detail: true,
       include_raw: false,
@@ -1383,7 +1383,7 @@ async function recallCommand(
 }
 
 async function nodeCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
@@ -1415,24 +1415,24 @@ async function nodeCommand(
     return withWorkspace(env, async (workspaceId) => {
       const node = (await client.readMemoryNode(
         workspaceId,
-        required(rest[0], "memfs node read requires a node id.")
+        required(rest[0], "verifs node read requires a node id.")
       )) as MemoryNode;
       output(io, parsed, formatNode(node), node);
     });
   }
 
-  throw new Error("Usage: memfs node list | memfs node read <node_id>");
+  throw new Error("Usage: verifs node list | verifs node read <node_id>");
 }
 
 async function auditCommand(
-  client: MemoryFSClient,
+  client: VeriFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
   subcommand: string | undefined
 ): Promise<number> {
   if (subcommand !== "list") {
-    throw new Error("Usage: memfs audit list");
+    throw new Error("Usage: verifs audit list");
   }
 
   return withWorkspace(env, async (workspaceId) => {
@@ -1452,7 +1452,7 @@ async function withWorkspace(
 ): Promise<number> {
   const config = await readConfig(env);
   if (!config.selectedWorkspaceId) {
-    throw new Error("No workspace selected. Run: memfs workspace list && memfs use <workspace>");
+    throw new Error("No workspace selected. Run: verifs workspace list && verifs use <workspace>");
   }
 
   await handler(config.selectedWorkspaceId);
@@ -1676,7 +1676,7 @@ function formatMountStatus(entries: MountRegistryEntry[]): string {
         `  api: ${entry.apiUrl}\n` +
         `  started: ${entry.startedAt}`
     )
-    .join("\n\n") || "(no active MemFS mounts)";
+    .join("\n\n") || "(no active VeriFS mounts)";
 }
 
 function formatExtractedSource(source: ExtractedSource): string {
@@ -2077,7 +2077,7 @@ async function writeConfig(env: NodeJS.ProcessEnv, config: CliConfig): Promise<v
 }
 
 function configDir(env: NodeJS.ProcessEnv): string {
-  return env.MEMFS_CONFIG_DIR ?? path.join(env.HOME ?? homedir(), ".memfs");
+  return env.VERIFS_CONFIG_DIR ?? path.join(env.HOME ?? homedir(), ".verifs");
 }
 
 function configPath(env: NodeJS.ProcessEnv): string {
@@ -2100,7 +2100,7 @@ function isString(value: string | undefined): value is string {
 }
 
 function isMissingResourceError(error: unknown): boolean {
-  return error instanceof MemoryFSNotFoundError;
+  return error instanceof VeriFSNotFoundError;
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
@@ -2138,78 +2138,78 @@ function inferMimeType(filePath: string): string {
 }
 
 function helpText(): string {
-  return `memfs commands:
-  memfs init
-  memfs status
-  memfs workspace create <name>
-  memfs workspace list
-  memfs use <workspace>
-  memfs ls [path]
-  memfs cat <path>
-  memfs write <path> <content>
-  memfs append <path> <content>
-  memfs rm <path>
-  memfs upload <local_path> [--to <memfs_path>]
-  memfs extract <path>
-  memfs extracted <path>
-  memfs grep [--literal|-F] [--scope <scope>] [--project <slug>] [--trusted-only] [--include-runs] [--include-stale] [--json] <query>
-  memfs search [--semantic|--hybrid] [--scope <scope>] [--project <slug>] [--trusted-only] [--include-runs] [--include-stale] [--json] <query>
-  memfs recall <query> [--scope <scope>] [--include-related]
-  memfs node list [--scope <scope>]
-  memfs node read <node_id>
-  memfs nodes --source <path>
-  memfs raw <node_id>
-  memfs audit list
-  memfs promote <source_path> --to <target_path>
-  memfs promotions
-	  memfs candidates [--status <status>] [--duplicates] [--conflicts] [--scope <scope>]
-	  memfs candidate show <candidate_id>
-	  memfs candidate edit <candidate_id>
-	  memfs candidate approve <candidate_id> [--target <path>]
-	  memfs candidate reject <candidate_id>
-	  memfs candidate resolve-conflict <candidate_id> --mode keep_new|keep_old|keep_both|mark_superseded
-	  memfs memory mark-stale <node_id> --reason <text>
-	  memfs memory confirm <node_id>
-	  memfs memory supersede <old_node_id> <new_node_id>
-  memfs graph node <node_id>
-  memfs graph related <node_id>
-  memfs graph link <from_node_id> <relation_type> <to_node_id>
-  memfs graph unlink <edge_id>
-  memfs graph path <from_node_id> <to_node_id>
-  memfs approve <promotion_id>
-  memfs reject <promotion_id>
-  memfs snapshot create <name>
-  memfs snapshot list
-  memfs snapshot diff <snapshot_id>
-  memfs rollback <snapshot_id> --dry-run
-  memfs health
-  memfs brief "<task>" [--project <slug>] [--include-candidates] [--json]
-  memfs run create "<task>"
-  memfs run complete <run_id>
-  memfs run compile <run_id> [--reasoning]
-  memfs run lessons <run_id>
-  memfs runs
-  memfs run show <run_id>
-  memfs run path <run_id>
-  memfs run today
-  memfs archive add <local_path> --type conversation --title <title>
-  memfs archive list
-  memfs archive show <archive_id>
-  memfs archive extract <archive_id>
-  memfs archive search <query>
-  memfs handoff --project <name>
-  memfs stale
-  memfs mount <workspace> <mountpoint> [--read-only|--read-write]
-  memfs mount status
-  memfs unmount <mountpoint>
-  memfs sync status
-  memfs sync pull
-  memfs sync push
-  memfs sync conflicts
-  memfs sync resolve <conflict_id> --mode keep_local|keep_remote|keep_both
-  memfs team members
-  memfs team invite <handle> --role viewer|agent|editor|admin|owner
-  memfs team role set <handle> <role>
+  return `verifs commands:
+  verifs init
+  verifs status
+  verifs workspace create <name>
+  verifs workspace list
+  verifs use <workspace>
+  verifs ls [path]
+  verifs cat <path>
+  verifs write <path> <content>
+  verifs append <path> <content>
+  verifs rm <path>
+  verifs upload <local_path> [--to <verifs_path>]
+  verifs extract <path>
+  verifs extracted <path>
+  verifs grep [--literal|-F] [--scope <scope>] [--project <slug>] [--trusted-only] [--include-runs] [--include-stale] [--json] <query>
+  verifs search [--semantic|--hybrid] [--scope <scope>] [--project <slug>] [--trusted-only] [--include-runs] [--include-stale] [--json] <query>
+  verifs recall <query> [--scope <scope>] [--include-related]
+  verifs node list [--scope <scope>]
+  verifs node read <node_id>
+  verifs nodes --source <path>
+  verifs raw <node_id>
+  verifs audit list
+  verifs promote <source_path> --to <target_path>
+  verifs promotions
+	  verifs candidates [--status <status>] [--duplicates] [--conflicts] [--scope <scope>]
+	  verifs candidate show <candidate_id>
+	  verifs candidate edit <candidate_id>
+	  verifs candidate approve <candidate_id> [--target <path>]
+	  verifs candidate reject <candidate_id>
+	  verifs candidate resolve-conflict <candidate_id> --mode keep_new|keep_old|keep_both|mark_superseded
+	  verifs memory mark-stale <node_id> --reason <text>
+	  verifs memory confirm <node_id>
+	  verifs memory supersede <old_node_id> <new_node_id>
+  verifs graph node <node_id>
+  verifs graph related <node_id>
+  verifs graph link <from_node_id> <relation_type> <to_node_id>
+  verifs graph unlink <edge_id>
+  verifs graph path <from_node_id> <to_node_id>
+  verifs approve <promotion_id>
+  verifs reject <promotion_id>
+  verifs snapshot create <name>
+  verifs snapshot list
+  verifs snapshot diff <snapshot_id>
+  verifs rollback <snapshot_id> --dry-run
+  verifs health
+  verifs brief "<task>" [--project <slug>] [--include-candidates] [--json]
+  verifs run create "<task>"
+  verifs run complete <run_id>
+  verifs run compile <run_id> [--reasoning]
+  verifs run lessons <run_id>
+  verifs runs
+  verifs run show <run_id>
+  verifs run path <run_id>
+  verifs run today
+  verifs archive add <local_path> --type conversation --title <title>
+  verifs archive list
+  verifs archive show <archive_id>
+  verifs archive extract <archive_id>
+  verifs archive search <query>
+  verifs handoff --project <name>
+  verifs stale
+  verifs mount <workspace> <mountpoint> [--read-only|--read-write]
+  verifs mount status
+  verifs unmount <mountpoint>
+  verifs sync status
+  verifs sync pull
+  verifs sync push
+  verifs sync conflicts
+  verifs sync resolve <conflict_id> --mode keep_local|keep_remote|keep_both
+  verifs team members
+  verifs team invite <handle> --role viewer|agent|editor|admin|owner
+  verifs team role set <handle> <role>
 
 Flags: --json, --no-ingest, --allow-protected, --dry-run
 Mount flags: --read-only, --read-write, --ingest-on-write, --allow-protected-write, --trust-level <level>, --default-run-folder <path>, --actor <actor>, --create-mountpoint, --allow-non-empty, --daemon`;

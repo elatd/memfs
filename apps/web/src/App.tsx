@@ -956,7 +956,7 @@ export function App() {
             <Database size={17} />
           </div>
           <div>
-            <h1 className="text-sm font-semibold tracking-normal">MemFS</h1>
+            <h1 className="text-sm font-semibold tracking-normal">VeriFS</h1>
             <p className="text-xs text-[var(--muted)]">{selectedWorkspace?.name ?? "No workspace"}</p>
           </div>
         </div>
@@ -1570,7 +1570,7 @@ export function App() {
                       <div className="snapshot-row" key={member.id}>
                         <div className="min-w-0">
                           <div className="truncate font-medium">{member.handle}</div>
-                          <div className="truncate text-[11px] text-[var(--muted)]">{member.display_name ?? "MemFS actor"}</div>
+                          <div className="truncate text-[11px] text-[var(--muted)]">{member.display_name ?? "VeriFS actor"}</div>
                         </div>
                         <select
                           className="control h-8 w-28"

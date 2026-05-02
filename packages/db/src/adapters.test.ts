@@ -39,7 +39,7 @@ describe("metadata adapters", () => {
         trigger: "Recall when testing team metadata storage.",
         detail: "This exercises the adapter boundary used by team and cloud mode.",
         raw_excerpt: "Postgres metadata adapter stores nodes.",
-        raw_ref: "memoryfs://team-demo/file-test/sha-test",
+        raw_ref: "verifs://team-demo/file-test/sha-test",
         source_location_json: JSON.stringify({ type: "markdown" }),
         tags_json: JSON.stringify(["postgres", "metadata", "adapter"]),
         memory_type: "fact",
@@ -50,7 +50,7 @@ describe("metadata adapters", () => {
         ttl_expires_at: null,
         scope: "project",
         project_slug: "team-demo",
-        repo_path: "/repos/memfs",
+        repo_path: "/repos/verifs",
         run_id: "run-test",
         created_at: blob.created_at,
         updated_at: blob.created_at
@@ -67,7 +67,7 @@ describe("metadata adapters", () => {
         source_blob_sha256: blob.sha256,
         scope: "project",
         project_slug: "team-demo",
-        repo_path: "/repos/memfs",
+        repo_path: "/repos/verifs",
         run_id: "run-test"
       });
     } finally {

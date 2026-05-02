@@ -1,5 +1,5 @@
 {
-  "name": "@memoryfs/api",
+  "name": "@verifs/api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",
-    "@memoryfs/core": "workspace:*",
+    "@verifs/core": "workspace:*",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1"
   }

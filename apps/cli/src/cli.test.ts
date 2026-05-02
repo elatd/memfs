@@ -1,4 +1,4 @@
-import { buildServer } from "@memoryfs/api";
+import { buildServer } from "@verifs/api";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,26 +11,26 @@ let app: Awaited<ReturnType<typeof buildServer>>;
 let env: NodeJS.ProcessEnv;
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(path.join(tmpdir(), "memfs-cli-test-"));
-  process.env.MEMORYFS_DATA_DIR = tempDir;
+  tempDir = await mkdtemp(path.join(tmpdir(), "verifs-cli-test-"));
+  process.env.VERIFS_DATA_DIR = tempDir;
   process.env.OPENAI_API_KEY = "";
   app = await buildServer();
   await app.listen({ port: 0, host: "127.0.0.1" });
   const address = app.server.address() as AddressInfo;
   env = {
     ...process.env,
-    MEMFS_API_URL: `http://127.0.0.1:${address.port}`,
-    MEMFS_CONFIG_DIR: path.join(tempDir, "config")
+    VERIFS_API_URL: `http://127.0.0.1:${address.port}`,
+    VERIFS_CONFIG_DIR: path.join(tempDir, "config")
   };
 });
 
 afterEach(async () => {
   await app.close();
   await rm(tempDir, { recursive: true, force: true });
-  delete process.env.MEMORYFS_DATA_DIR;
+  delete process.env.VERIFS_DATA_DIR;
 });
 
-describe("memfs CLI", () => {
+describe("verifs CLI", () => {
   it("creates and selects a workspace", async () => {
     const create = await run("workspace", "create", "demo");
     expect(create.code).toBe(0);
@@ -103,7 +103,7 @@ describe("memfs CLI", () => {
       line: 1,
       match_type: "literal"
     });
-    expect(parsed.results[0]?.raw_ref).toContain("memoryfs://");
+    expect(parsed.results[0]?.raw_ref).toContain("verifs://");
     expect(parsed.results[0]?.snippet).toContain("OAuth refresh tokens");
     expect(typeof parsed.results[0]?.score).toBe("number");
     expect(parsed.results[0]).toHaveProperty("trust");
@@ -212,7 +212,7 @@ describe("memfs CLI", () => {
     const add = await run("archive", "add", localPath, "--type", "conversation", "--title", "Claude coding session", "--json");
     const entry = JSON.parse(add.stdout) as { id: string; path: string; raw_ref: string };
     expect(entry.path).toContain("/archive/conversations/");
-    expect(entry.raw_ref).toContain("memoryfs://");
+    expect(entry.raw_ref).toContain("verifs://");
 
     const list = await run("archive", "list");
     expect(list.stdout).toContain(entry.id);
@@ -463,7 +463,7 @@ describe("memfs CLI", () => {
     const status = await run("mount", "status");
 
     expect(status.code).toBe(0);
-    expect(status.stdout).toContain("(no active MemFS mounts)");
+    expect(status.stdout).toContain("(no active VeriFS mounts)");
   });
 });
 

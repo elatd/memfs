@@ -1,10 +1,10 @@
 {
-  "name": "@memoryfs/mountd",
+  "name": "@verifs/mountd",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "memfs-mountd": "./bin/memfs-mountd.js"
+    "verifs-mountd": "./bin/verifs-mountd.js"
   },
   "exports": {
     ".": "./src/index.ts"
@@ -14,8 +14,8 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@memoryfs/mount-core": "workspace:*",
-    "@memoryfs/sdk": "workspace:*",
+    "@verifs/mount-core": "workspace:*",
+    "@verifs/sdk": "workspace:*",
     "tsx": "^4.19.2"
   },
   "optionalDependencies": {

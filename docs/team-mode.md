@@ -9,9 +9,9 @@ Modes:
 Enable team mode:
 
 ```bash
-MEMFS_MODE=team
-MEMFS_AUTH_REQUIRED=true
-MEMFS_SYNC_ENABLED=true
+VERIFS_MODE=team
+VERIFS_AUTH_REQUIRED=true
+VERIFS_SYNC_ENABLED=true
 ```
 
 Team endpoints:
@@ -35,7 +35,7 @@ Auth is intentionally simple in the MVP. Send either:
 
 ```text
 Authorization: Bearer human:owner
-x-memfs-actor: human:owner
+x-verifs-actor: human:owner
 ```
 
 The actor handle is checked against workspace membership. Local mode remains unauthenticated by default.

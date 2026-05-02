@@ -1,6 +1,6 @@
 # Memory Curation
 
-MemFS is designed to work with local, open-weight, and hosted models. The main agent model does not need to write directly to long-term memory. Instead, MemFS should use a memory curation pipeline that separates task execution from memory promotion.
+VeriFS is designed to work with local, open-weight, and hosted models. The main agent model does not need to write directly to long-term memory. Instead, VeriFS should use a memory curation pipeline that separates task execution from memory promotion.
 
 Recommended flow:
 
@@ -11,12 +11,12 @@ Agent run or user event
   -> Validation, deduplication, and safety checks
   -> Optional verifier model
   -> Candidate memory or approved memory
-  -> MemFS workspace, audit log, and search index
+  -> VeriFS workspace, audit log, and search index
 ```
 
 The curator model extracts durable, reusable memories from conversations, agent runs, files, and tool outputs. These may include user preferences, project facts, technical constraints, decisions, known bugs, successful patterns, failed attempts, and follow-up tasks.
 
-MemFS should be conservative by default. Most memories should be written as candidates first, especially when they are inferred, derived from external content, or could affect future agent behavior. Explicit user instructions such as "remember this", "always do this", or "for this project, use this stack" may be promoted more directly, subject to validation.
+VeriFS should be conservative by default. Most memories should be written as candidates first, especially when they are inferred, derived from external content, or could affect future agent behavior. Explicit user instructions such as "remember this", "always do this", or "for this project, use this stack" may be promoted more directly, subject to validation.
 
 ## Model Strategy
 
@@ -34,9 +34,9 @@ A practical default is an 8B instruct model. Models such as Qwen 8B, Ministral 8
 
 ## Prompting Before Fine-Tuning
 
-Fine-tuning is not required for the first version of MemFS memory curation. A strong system prompt, strict JSON schema, deterministic validation rules, and retry-on-invalid-output should be enough for an MVP.
+Fine-tuning is not required for the first version of VeriFS memory curation. A strong system prompt, strict JSON schema, deterministic validation rules, and retry-on-invalid-output should be enough for an MVP.
 
-Fine-tuning should only be considered after MemFS has collected enough review data to identify repeated failure patterns, such as storing low-value memories, missing important durable facts, over-promoting inferred preferences, or failing to detect conflicts.
+Fine-tuning should only be considered after VeriFS has collected enough review data to identify repeated failure patterns, such as storing low-value memories, missing important durable facts, over-promoting inferred preferences, or failing to detect conflicts.
 
 Review decisions should be saved as future training data:
 
@@ -54,7 +54,7 @@ This creates a natural feedback loop for improving the curator later.
 
 The curator should not store every message. It should extract only durable, reusable information.
 
-MemFS should avoid storing:
+VeriFS should avoid storing:
 
 - secrets
 - API keys
@@ -131,11 +131,11 @@ External documents, webpages, archives, and tool outputs may be stored as source
 
 ## Product Principle
 
-MemFS should not simply be a place where agents write memories. It should be a trusted memory layer where memories are source-backed, reviewable, auditable, searchable, and reversible.
+VeriFS should not simply be a place where agents write memories. It should be a trusted memory layer where memories are source-backed, reviewable, auditable, searchable, and reversible.
 
 Core principle:
 
 ```text
 Agents may propose memories freely.
-MemFS decides how those memories are validated, reviewed, promoted, searched, and audited.
+VeriFS decides how those memories are validated, reviewed, promoted, searched, and audited.
 ```

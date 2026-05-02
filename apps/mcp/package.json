@@ -1,10 +1,10 @@
 {
-  "name": "@memoryfs/mcp",
+  "name": "@verifs/mcp",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "memoryfs-mcp": "./src/server.ts"
+    "verifs-mcp": "./src/server.ts"
   },
   "scripts": {
     "dev": "tsx src/server.ts",
@@ -12,7 +12,7 @@
     "start": "tsx src/server.ts"
   },
   "dependencies": {
-    "@memoryfs/core": "workspace:*",
+    "@verifs/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.5.0",
     "dotenv": "^16.4.7",
     "zod": "^3.24.1"

@@ -1,8 +1,8 @@
-# MemFS Roadmap Implementation Map
+# VeriFS Roadmap Implementation Map
 
 Date: 2026-05-01
 
-This audit covers the current `elatd/memfs` monorepo surfaces:
+This audit covers the current `elatd/verifs` monorepo surfaces:
 
 - Top-level: `README.md`, `package.json`, `pnpm-workspace.yaml`, `agents.md`
 - Docs: `docs/*.md`
@@ -48,13 +48,13 @@ Existing.
 
 Existing behavior:
 
-- `apps/cli/src/index.ts` implements `memfs grep <query>` as exact text search by default and `memfs search <query>` as meaning-oriented hybrid search.
+- `apps/cli/src/index.ts` implements `verifs grep <query>` as exact text search by default and `verifs search <query>` as meaning-oriented hybrid search.
 - `packages/virtual-bash/src/index.ts` follows the same split: `grep` exact and `search` hybrid.
 - `packages/core/src/index.ts` exposes `grepMemory(...)` with `literal`, `semantic`, and `hybrid` modes; the default mode is `literal`.
 - `packages/core/src/index.ts` still has `searchMemory(...)` as an older recall-shaped meaning search; unify it with hybrid search if keeping the API-level search entrypoint.
 - `recallMemory(...)` scores trigger, summary, keyword, detail/raw excerpt embeddings, importance, recency, path/project match, and graph score.
-- `apps/mcp/src/server.ts` exposes both `memfs_grep` and `memfs_memory_search`.
-- `packages/mount-core/src/index.ts` exposes `.memfs/search.query` as meaning-oriented hybrid search.
+- `apps/mcp/src/server.ts` exposes both `verifs_grep` and `verifs_memory_search`.
+- `packages/mount-core/src/index.ts` exposes `.verifs/search.query` as meaning-oriented hybrid search.
 
 Remaining possible improvements:
 
@@ -91,8 +91,8 @@ Files:
 
 ### Likely CLI Changes
 
-- Keep `memfs grep "query"` as the exact text command.
-- Keep `memfs search "query"` as the meaning-oriented hybrid command.
+- Keep `verifs grep "query"` as the exact text command.
+- Keep `verifs search "query"` as the meaning-oriented hybrid command.
 - Add flags:
   - `--literal`
   - `--semantic`
@@ -101,7 +101,7 @@ Files:
   - `--include-runs`
   - `--scope <scope>`
   - `--limit <n>`
-- Semantic-only search is available through `memfs search --semantic`; there is no separate shortcut.
+- Semantic-only search is available through `verifs search --semantic`; there is no separate shortcut.
 
 Files:
 
@@ -111,7 +111,7 @@ Files:
 
 ### Likely MCP Tool Changes
 
-- Add `memfs_grep` with input:
+- Add `verifs_grep` with input:
   - `workspace_id`
   - `query`
   - `mode`
@@ -120,7 +120,7 @@ Files:
   - `limit`
   - `include_sources`
   - `include_runs`
-- Keep `memfs_memory_search` as the MCP meaning-oriented hybrid search entrypoint, backed by `grepMemory(..., mode: "hybrid")`.
+- Keep `verifs_memory_search` as the MCP meaning-oriented hybrid search entrypoint, backed by `grepMemory(..., mode: "hybrid")`.
 
 Files:
 
@@ -133,13 +133,13 @@ Files:
 
 - Core: hybrid grep returns both exact literal matches and semantic-only matches.
 - API: `/memory/grep` supports `literal`, `semantic`, and `hybrid` modes.
-- CLI: `memfs grep --literal` excludes semantic-only results; default includes both.
-- MCP: `memfs_grep` returns source paths, line/source locations, trust, and no raw source by default.
-- Mount-core: `.memfs/search.query` either uses grep or clearly remains memory-search-only.
+- CLI: `verifs grep --literal` excludes semantic-only results; default includes both.
+- MCP: `verifs_grep` returns source paths, line/source locations, trust, and no raw source by default.
+- Mount-core: `.verifs/search.query` either uses grep or clearly remains memory-search-only.
 
 Files:
 
-- `packages/core/src/memoryfs.test.ts`
+- `packages/core/src/verifs.test.ts`
 - `apps/api/src/server.test.ts`
 - `apps/cli/src/cli.test.ts`
 - `apps/mcp/src/mcp.test.ts`
@@ -210,10 +210,10 @@ Files:
 ### Likely CLI Changes
 
 - Add:
-  - `memfs archive add <local_path> --to <path>`
-  - `memfs archive write <path> <content>`
-  - `memfs archive list`
-  - `memfs archive raw <archive_id>`
+  - `verifs archive add <local_path> --to <path>`
+  - `verifs archive write <path> <content>`
+  - `verifs archive list`
+  - `verifs archive raw <archive_id>`
 - Make archive writes default to `ingest=false`.
 
 Files:
@@ -225,10 +225,10 @@ Files:
 ### Likely MCP Tool Changes
 
 - Add:
-  - `memfs_archive_write`
-  - `memfs_archive_upload`
-  - `memfs_archive_list`
-  - `memfs_archive_raw_read`
+  - `verifs_archive_write`
+  - `verifs_archive_upload`
+  - `verifs_archive_list`
+  - `verifs_archive_raw_read`
 - Raw read should stay explicit and auditable.
 
 Files:
@@ -247,7 +247,7 @@ Files:
 
 Files:
 
-- `packages/core/src/memoryfs.test.ts`
+- `packages/core/src/verifs.test.ts`
 - `apps/api/src/server.test.ts`
 - `apps/cli/src/cli.test.ts`
 - `apps/mcp/src/mcp.test.ts`
@@ -332,8 +332,8 @@ Files:
   - `--project <project>`
   - `--run <run_id>`
 - Add:
-  - `memfs scope list`
-  - `memfs scope create <type> <key>`
+  - `verifs scope list`
+  - `verifs scope create <type> <key>`
 
 Files:
 
@@ -344,8 +344,8 @@ Files:
 ### Likely MCP Tool Changes
 
 - Add:
-  - `memfs_memory_scope_list`
-  - `memfs_memory_scope_create`
+  - `verifs_memory_scope_list`
+  - `verifs_memory_scope_create`
 - Add `scope`/`scopes` inputs to recall, search/grep, brief, and candidate tools.
 
 Files:
@@ -364,7 +364,7 @@ Files:
 
 Files:
 
-- `packages/core/src/memoryfs.test.ts`
+- `packages/core/src/verifs.test.ts`
 - `packages/memory/src/planner.test.ts`
 - `apps/api/src/server.test.ts`
 - `apps/cli/src/cli.test.ts`
@@ -451,12 +451,12 @@ Files:
 ### Likely CLI Changes
 
 - Add:
-  - `memfs candidates`
-  - `memfs candidate read <id>`
-  - `memfs candidate approve <id>`
-  - `memfs candidate reject <id>`
-  - `memfs candidate edit <id> --summary ...`
-  - `memfs candidate duplicate <id> --of <node_id>`
+  - `verifs candidates`
+  - `verifs candidate read <id>`
+  - `verifs candidate approve <id>`
+  - `verifs candidate reject <id>`
+  - `verifs candidate edit <id> --summary ...`
+  - `verifs candidate duplicate <id> --of <node_id>`
 
 Files:
 
@@ -468,15 +468,15 @@ Files:
 
 Agent-safe tools:
 
-- `memfs_memory_candidate_create`
-- `memfs_memory_candidate_list`
-- `memfs_memory_candidate_read`
+- `verifs_memory_candidate_create`
+- `verifs_memory_candidate_list`
+- `verifs_memory_candidate_read`
 
 Human/reviewer tools can remain off by default or be gated:
 
-- `memfs_memory_candidate_approve`
-- `memfs_memory_candidate_reject`
-- `memfs_memory_candidate_edit`
+- `verifs_memory_candidate_approve`
+- `verifs_memory_candidate_reject`
+- `verifs_memory_candidate_edit`
 
 Files:
 
@@ -495,7 +495,7 @@ Files:
 
 Files:
 
-- `packages/core/src/memoryfs.test.ts`
+- `packages/core/src/verifs.test.ts`
 - `apps/api/src/server.test.ts`
 - `apps/cli/src/cli.test.ts`
 - `apps/mcp/src/mcp.test.ts`
@@ -572,9 +572,9 @@ Files:
 ### Likely CLI Changes
 
 - Add:
-  - `memfs run log <run_id> <event_type> <payload>`
-  - `memfs run reason <run_id> <summary>`
-  - `memfs run compile <run_id> --include-reasoning`
+  - `verifs run log <run_id> <event_type> <payload>`
+  - `verifs run reason <run_id> <summary>`
+  - `verifs run compile <run_id> --include-reasoning`
 
 Files:
 
@@ -585,10 +585,10 @@ Files:
 ### Likely MCP Tool Changes
 
 - Add:
-  - `memfs_run_read`
-  - `memfs_run_list`
-  - `memfs_run_log_reasoning_summary`
-- Extend `memfs_run_compile` with `include_reasoning` and `create_promotions`.
+  - `verifs_run_read`
+  - `verifs_run_list`
+  - `verifs_run_log_reasoning_summary`
+- Extend `verifs_run_compile` with `include_reasoning` and `create_promotions`.
 
 Files:
 
@@ -606,7 +606,7 @@ Files:
 
 Files:
 
-- `packages/core/src/memoryfs.test.ts`
+- `packages/core/src/verifs.test.ts`
 - `apps/api/src/server.test.ts`
 - `apps/cli/src/cli.test.ts`
 - `apps/mcp/src/mcp.test.ts`
@@ -621,8 +621,8 @@ Existing behavior:
 
 - `createBrief(...)` exists in `packages/core/src/index.ts`.
 - API route `POST /workspaces/:id/brief` exists.
-- CLI command `memfs brief "<task>"` exists.
-- MCP tool `memfs_brief` exists.
+- CLI command `verifs brief "<task>"` exists.
+- MCP tool `verifs_brief` exists.
 - Web dashboard can create a brief.
 - Briefs can create runs and write `/runs/<run_id>/brief.md`.
 - Brief sections include decisions, constraints, preferences, previous errors, open questions, suggested files, and warnings.
@@ -674,8 +674,8 @@ Files:
 ### Likely CLI Changes
 
 - Add:
-  - `memfs brief "<task>" --scope <scope> --since <date>`
-  - `memfs run create "<task>" --brief`
+  - `verifs brief "<task>" --scope <scope> --since <date>`
+  - `verifs run create "<task>" --brief`
 
 Files:
 
@@ -685,8 +685,8 @@ Files:
 
 ### Likely MCP Tool Changes
 
-- Extend `memfs_brief` with `scope`, `since`, `until`, `as_of`, and `create_run`.
-- Add `memfs_run_create` option `create_brief`.
+- Extend `verifs_brief` with `scope`, `since`, `until`, `as_of`, and `create_run`.
+- Add `verifs_run_create` option `create_brief`.
 
 Files:
 
@@ -704,7 +704,7 @@ Files:
 
 Files:
 
-- `packages/core/src/memoryfs.test.ts`
+- `packages/core/src/verifs.test.ts`
 - `apps/api/src/server.test.ts`
 - `apps/cli/src/cli.test.ts`
 - `apps/mcp/src/mcp.test.ts`
@@ -789,10 +789,10 @@ Files:
 ### Likely MCP Tool Changes
 
 - Add temporal inputs to:
-  - `memfs_grep`
-  - `memfs_memory_search`
-  - `memfs_memory_recall`
-  - `memfs_brief`
+  - `verifs_grep`
+  - `verifs_memory_search`
+  - `verifs_memory_recall`
+  - `verifs_brief`
   - candidate list tools
 
 Files:
@@ -811,7 +811,7 @@ Files:
 
 Files:
 
-- `packages/core/src/memoryfs.test.ts`
+- `packages/core/src/verifs.test.ts`
 - `packages/memory/src/planner.test.ts`
 - `apps/api/src/server.test.ts`
 - `apps/cli/src/cli.test.ts`
@@ -880,10 +880,10 @@ Files:
 ### Likely CLI Changes
 
 - Add:
-  - `memfs graph node <node_id>`
-  - `memfs graph query "<query>"`
-  - `memfs graph link <from> <to> --type related_to`
-  - `memfs graph contradictions`
+  - `verifs graph node <node_id>`
+  - `verifs graph query "<query>"`
+  - `verifs graph link <from> <to> --type related_to`
+  - `verifs graph contradictions`
 
 Files:
 
@@ -894,10 +894,10 @@ Files:
 ### Likely MCP Tool Changes
 
 - Add:
-  - `memfs_memory_graph_neighbors`
-  - `memfs_memory_graph_query`
-  - `memfs_memory_link_create`
-  - `memfs_memory_contradiction_list`
+  - `verifs_memory_graph_neighbors`
+  - `verifs_memory_graph_query`
+  - `verifs_memory_link_create`
+  - `verifs_memory_contradiction_list`
 
 Files:
 
@@ -915,7 +915,7 @@ Files:
 
 Files:
 
-- `packages/core/src/memoryfs.test.ts`
+- `packages/core/src/verifs.test.ts`
 - `apps/api/src/server.test.ts`
 - `apps/cli/src/cli.test.ts`
 - `apps/mcp/src/mcp.test.ts`
@@ -928,7 +928,7 @@ Partial.
 
 Existing behavior:
 
-- `packages/sdk/src/index.ts` exposes `MemoryFSClient` and `createMemoryFSClient`.
+- `packages/sdk/src/index.ts` exposes `VeriFSClient` and `createVeriFSClient`.
 - It wraps most API endpoints.
 - It returns `Promise<unknown>` for almost everything.
 - It has no workspace-bound helper and no high-level mental model methods.
@@ -945,7 +945,7 @@ Missing behavior:
 
 - No DB changes required.
 - Types should be shared or duplicated intentionally:
-  - Re-export public types from `@memoryfs/core` where practical.
+  - Re-export public types from `@verifs/core` where practical.
   - Or define SDK transport types in `packages/sdk/src/index.ts`.
 
 Files:
@@ -1019,7 +1019,7 @@ Missing current-implementation tools:
 
 Missing for proposed features:
 
-- `memfs_grep`
+- `verifs_grep`
 - Archive tools
 - Scope tools
 - Candidate review tools
@@ -1077,9 +1077,9 @@ Files:
 
 ## Documentation Inconsistencies And Gaps
 
-- `README.md` says MemFS "validates, deduplicates, reviews, promotes, searches, and audits" agent-proposed memories through a curation pipeline. The code has extraction validation, heuristic dedupe, promotions, and reviews, but not a first-class candidate curation pipeline with candidate list/edit/risk/verifier workflow.
+- `README.md` says VeriFS "validates, deduplicates, reviews, promotes, searches, and audits" agent-proposed memories through a curation pipeline. The code has extraction validation, heuristic dedupe, promotions, and reviews, but not a first-class candidate curation pipeline with candidate list/edit/risk/verifier workflow.
 - `docs/memory-curation.md` defines candidate shape with `scope`, `source_refs`, `risk_flags`, and `requires_review`. `packages/memory/src/index.ts` `ExtractedMemoryNode` currently has none of those fields.
-- `docs/api.md` says `/memory/search` is intended for hybrid grep-style workflows. In code, `MemoryFS.searchMemory(...)` simply calls `recallMemory(...)`; literal file matching exists only in CLI and virtual bash.
+- `docs/api.md` says `/memory/search` is intended for hybrid grep-style workflows. In code, `VeriFS.searchMemory(...)` simply calls `recallMemory(...)`; literal file matching exists only in CLI and virtual bash.
 - `docs/mcp.md` lists many tools, but MCP lacks several current API surfaces: node list, node source read, graph link list/create, contradictions list, stale review, promotion read, snapshot diff/rollback, run list/read, run memory-used, and sync conflict resolve.
 - `apps/mcp/README.md` is less complete than `docs/mcp.md`; it omits upload/extract/extracted-source tools that are implemented and documented in `docs/mcp.md`.
 - `docs/postgres.md` says the Postgres adapter covers workspaces, files, blobs, memory nodes, and sync events. The hand-written Postgres migration contains only that subset, while the SQLite schema contains many more product tables; new roadmap schema work needs explicit Postgres parity decisions.

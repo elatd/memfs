@@ -1,22 +1,22 @@
 {
-  "name": "@memoryfs/cli",
+  "name": "@verifs/cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "memfs": "./bin/memfs.js"
+    "verifs": "./bin/verifs.js"
   },
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@memoryfs/core": "workspace:*",
-    "@memoryfs/mountd": "workspace:*",
-    "@memoryfs/sdk": "workspace:*",
+    "@verifs/core": "workspace:*",
+    "@verifs/mountd": "workspace:*",
+    "@verifs/sdk": "workspace:*",
     "tsx": "^4.19.2"
   },
   "devDependencies": {
-    "@memoryfs/api": "workspace:*"
+    "@verifs/api": "workspace:*"
   }
 }

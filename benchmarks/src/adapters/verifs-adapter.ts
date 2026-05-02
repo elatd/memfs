@@ -1,4 +1,4 @@
-import { MemoryFS, type MemoryGrepResult } from "@memoryfs/core";
+import { VeriFS, type MemoryGrepResult } from "@verifs/core";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,11 +11,11 @@ import type {
   MemorySystemAdapter
 } from "./memory-system-adapter.js";
 
-export class MemFSAdapter implements MemorySystemAdapter {
-  name = "memfs";
+export class VeriFSAdapter implements MemorySystemAdapter {
+  name = "verifs";
 
   private dataDir: string | null = null;
-  private memoryfs: MemoryFS | null = null;
+  private verifs: VeriFS | null = null;
   private workspaceId: string | null = null;
   private sourceIdsByPath = new Map<string, string>();
   private metadataBySourceId = new Map<string, MemoryMetadata>();
@@ -24,25 +24,25 @@ export class MemFSAdapter implements MemorySystemAdapter {
     await this.close();
 
     process.env.OPENAI_API_KEY = "";
-    this.dataDir = await mkdtemp(path.join(tmpdir(), "memfs-smoke-benchmark-"));
-    this.memoryfs = new MemoryFS({
+    this.dataDir = await mkdtemp(path.join(tmpdir(), "verifs-smoke-benchmark-"));
+    this.verifs = new VeriFS({
       dataDir: this.dataDir,
       memory: {
         useLlm: false
       }
     });
-    await this.memoryfs.initialize();
-    this.workspaceId = this.memoryfs.createWorkspace("smoke-benchmark").id;
+    await this.verifs.initialize();
+    this.workspaceId = this.verifs.createWorkspace("smoke-benchmark").id;
     this.sourceIdsByPath = new Map();
     this.metadataBySourceId = new Map();
   }
 
   async ingest(input: MemoryIngestInput): Promise<void> {
-    const memoryfs = await this.getMemoryFS();
+    const verifs = await this.getVeriFS();
     const workspaceId = await this.getWorkspaceId();
     const filePath = sourcePathFor(input.sourceId, input.metadata);
 
-    await memoryfs.writeFile(workspaceId, filePath, input.text, {
+    await verifs.writeFile(workspaceId, filePath, input.text, {
       actor: "benchmark:seed",
       ingest: true,
       allow_protected_write: true
@@ -52,9 +52,9 @@ export class MemFSAdapter implements MemorySystemAdapter {
     this.metadataBySourceId.set(input.sourceId, input.metadata ?? {});
 
     if (input.metadata?.status === "stale") {
-      const node = memoryfs.listMemoryNodes(workspaceId).find((entry) => entry.source_path === filePath);
+      const node = verifs.listMemoryNodes(workspaceId).find((entry) => entry.source_path === filePath);
       if (node) {
-        memoryfs.markMemoryStale(workspaceId, node.id, {
+        verifs.markMemoryStale(workspaceId, node.id, {
           actor: "benchmark:seed",
           reason: "Smoke benchmark fixture marks this memory as stale."
         });
@@ -63,9 +63,9 @@ export class MemFSAdapter implements MemorySystemAdapter {
   }
 
   async retrieve(query: MemoryRetrieveQuery): Promise<MemoryRetrievedItem[]> {
-    const memoryfs = await this.getMemoryFS();
+    const verifs = await this.getVeriFS();
     const workspaceId = await this.getWorkspaceId();
-    const response = await memoryfs.grepMemory(workspaceId, query.text, {
+    const response = await verifs.grepMemory(workspaceId, query.text, {
       mode: "hybrid",
       include_sources: true,
       include_runs: true,
@@ -77,9 +77,9 @@ export class MemFSAdapter implements MemorySystemAdapter {
   }
 
   async close(): Promise<void> {
-    if (this.memoryfs) {
-      this.memoryfs.close();
-      this.memoryfs = null;
+    if (this.verifs) {
+      this.verifs.close();
+      this.verifs = null;
     }
 
     if (this.dataDir) {
@@ -92,16 +92,16 @@ export class MemFSAdapter implements MemorySystemAdapter {
     this.metadataBySourceId = new Map();
   }
 
-  private async getMemoryFS(): Promise<MemoryFS> {
-    if (!this.memoryfs) {
+  private async getVeriFS(): Promise<VeriFS> {
+    if (!this.verifs) {
       await this.reset();
     }
 
-    if (!this.memoryfs) {
-      throw new Error("MemFS adapter failed to initialize.");
+    if (!this.verifs) {
+      throw new Error("VeriFS adapter failed to initialize.");
     }
 
-    return this.memoryfs;
+    return this.verifs;
   }
 
   private async getWorkspaceId(): Promise<string> {
@@ -110,7 +110,7 @@ export class MemFSAdapter implements MemorySystemAdapter {
     }
 
     if (!this.workspaceId) {
-      throw new Error("MemFS adapter workspace is not initialized.");
+      throw new Error("VeriFS adapter workspace is not initialized.");
     }
 
     return this.workspaceId;

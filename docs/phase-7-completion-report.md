@@ -4,10 +4,10 @@ Date: 2026-05-01
 
 ## Implemented Capabilities
 
-- CLI mount workflow: `memfs mount`, `memfs unmount`, and `memfs mount status`.
-- Mount core: pure TypeScript `@memoryfs/mount-core` with read-only, read-write, protected-path checks, write-through API/core calls, and `.memfs` virtual controls.
-- Mount daemon: optional FUSE-backed `@memoryfs/mountd` with read and write operations where `fuse-native` is available.
-- `.memfs` control directory: status, recall query/results, search query/results, audit, health, and README files.
+- CLI mount workflow: `verifs mount`, `verifs unmount`, and `verifs mount status`.
+- Mount core: pure TypeScript `@verifs/mount-core` with read-only, read-write, protected-path checks, write-through API/core calls, and `.verifs` virtual controls.
+- Mount daemon: optional FUSE-backed `@verifs/mountd` with read and write operations where `fuse-native` is available.
+- `.verifs` control directory: status, recall query/results, search query/results, audit, health, and README files.
 - Audit coverage for mount lifecycle, reads, writes, deletes, protected denials, recall queries, and search queries where audit support is available.
 - Virtual bash agent UX: file operations, exact grep, meaning-oriented search, recall, brief, run lifecycle, promotions, health, and sync status.
 
@@ -16,7 +16,7 @@ Date: 2026-05-01
 - Virtual bash no longer bypasses protected paths.
 - `write`, `append`, and `rm` now default to `allow_protected_write=false`, matching CLI and mount behavior.
 - Protected write override is only available through shell construction with `allowProtectedWrite: true`; it is not exposed as a virtual bash command flag.
-- Protected denials continue to flow through MemFS core, preserving core audit events such as `protected_write_denied` and `protected_delete_denied`.
+- Protected denials continue to flow through VeriFS core, preserving core audit events such as `protected_write_denied` and `protected_delete_denied`.
 
 ## CI Behavior
 
@@ -41,7 +41,7 @@ pnpm typecheck
 pnpm mount:smoke:readwrite
 ```
 
-- The smoke script exits successfully with a clear `SKIP` message when FUSE or the native adapter is unavailable. Set `MEMFS_REQUIRE_FUSE_TEST=1` to make missing FUSE fail.
+- The smoke script exits successfully with a clear `SKIP` message when FUSE or the native adapter is unavailable. Set `VERIFS_REQUIRE_FUSE_TEST=1` to make missing FUSE fail.
 
 ## FUSE Verification
 
@@ -57,14 +57,14 @@ Result:
 
 ```text
 SKIP: FUSE is unavailable in this environment: No native build was found for platform=darwin arch=arm64 runtime=node abi=137 uv=1 armv=8 libc=glibc node=24.14.0
-    loaded from: /Users/abasa/Projects/memfs/node_modules/.pnpm/fuse-native@2.2.6/node_modules/fuse-native
+    loaded from: /Users/abasa/Projects/verifs/node_modules/.pnpm/fuse-native@2.2.6/node_modules/fuse-native
 ```
 
 No real macOS mount success is claimed from this run because the native `fuse-native` adapter did not load in the local Node 24 environment.
 
 ### Linux
 
-No local Linux FUSE host was available in this session. Linux coverage is configured through the `ubuntu-latest` CI smoke job. If FUSE is unavailable or blocked in CI, the job reports `SKIP` with the reason and exits successfully unless `MEMFS_REQUIRE_FUSE_TEST=1` is set.
+No local Linux FUSE host was available in this session. Linux coverage is configured through the `ubuntu-latest` CI smoke job. If FUSE is unavailable or blocked in CI, the job reports `SKIP` with the reason and exits successfully unless `VERIFS_REQUIRE_FUSE_TEST=1` is set.
 
 ## Known Limitations
 

@@ -1,6 +1,6 @@
 # Multimodal Ingestion
 
-MemFS ingestion is raw-first. The uploaded file or written workspace file is stored as a SHA-256 blob and remains canonical. Extracted text is a derived representation used for memory extraction and search.
+VeriFS ingestion is raw-first. The uploaded file or written workspace file is stored as a SHA-256 blob and remains canonical. Extracted text is a derived representation used for memory extraction and search.
 
 Supported clean-room extractors in this phase:
 
@@ -27,9 +27,9 @@ curl -X POST http://localhost:3131/workspaces/$WORKSPACE/files/upload \
 CLI workflow:
 
 ```bash
-memfs upload ./status.csv --to /uploads/status.csv
-memfs extracted /uploads/status.csv
-memfs recall "status rows that matter"
+verifs upload ./status.csv --to /uploads/status.csv
+verifs extracted /uploads/status.csv
+verifs recall "status rows that matter"
 ```
 
 Dashboard workflow:

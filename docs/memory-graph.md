@@ -1,6 +1,6 @@
 # Memory Graph
 
-MemFS keeps an associative memory graph so related memories, source files, runs, candidates, and reasoning memories can be inspected together without hiding the source evidence.
+VeriFS keeps an associative memory graph so related memories, source files, runs, candidates, and reasoning memories can be inspected together without hiding the source evidence.
 
 Raw files remain canonical. Graph edges are retrieval and explanation metadata: they help recall and briefs surface adjacent context, but each memory still carries `source_path`, `raw_ref`, trust, and status fields.
 
@@ -34,7 +34,7 @@ Typed object edges are stored in `memory_graph_edges` when the relationship poin
   "relation_type": "observed_in",
   "confidence": 0.95,
   "reason": "Memory node was observed in run run-id.",
-  "source_ref": "memoryfs://workspace/runs/run-id/reasoning-memories.json#sha",
+  "source_ref": "verifs://workspace/runs/run-id/reasoning-memories.json#sha",
   "created_at": "2026-05-01T00:00:00.000Z"
 }
 ```
@@ -60,11 +60,11 @@ Relation types:
 - `applies_to`
 - `blocked_by`
 
-MemFS also preserves earlier internal relation names for compatibility: `duplicates`, `belongs_to_project`, `used_in_run`, and `promoted_from`.
+VeriFS also preserves earlier internal relation names for compatibility: `duplicates`, `belongs_to_project`, `used_in_run`, and `promoted_from`.
 
 ## Automatic Edges
 
-MemFS creates edges during normal workflows:
+VeriFS creates edges during normal workflows:
 
 1. New memory nodes are compared with existing nodes in the same workspace.
 2. Exact or near-identical memories are linked with `duplicates`; they are not deleted.
@@ -78,25 +78,25 @@ MemFS creates edges during normal workflows:
 ## CLI
 
 ```bash
-memfs graph node <node_id>
-memfs graph related <node_id>
-memfs graph link <from_node_id> <relation_type> <to_node_id>
-memfs graph unlink <edge_id>
-memfs graph path <from_node_id> <to_node_id>
+verifs graph node <node_id>
+verifs graph related <node_id>
+verifs graph link <from_node_id> <relation_type> <to_node_id>
+verifs graph unlink <edge_id>
+verifs graph path <from_node_id> <to_node_id>
 ```
 
 Examples:
 
 ```bash
-memfs graph link mem-a supports mem-b --reason "Rotation supports server-side refresh token storage"
-memfs graph related mem-a --depth 2 --limit 10
-memfs graph path mem-a mem-b
+verifs graph link mem-a supports mem-b --reason "Rotation supports server-side refresh token storage"
+verifs graph related mem-a --depth 2 --limit 10
+verifs graph path mem-a mem-b
 ```
 
 For non-memory endpoints, pass endpoint types:
 
 ```bash
-memfs graph link mem-a implemented_in file-id --to-type file
+verifs graph link mem-a implemented_in file-id --to-type file
 ```
 
 ## API
@@ -139,7 +139,7 @@ Generic edge body:
   "to_type": "run",
   "to_id": "run-id",
   "relation_type": "observed_in",
-  "source_ref": "memoryfs://workspace/runs/run-id/reasoning-memories.json#sha"
+  "source_ref": "verifs://workspace/runs/run-id/reasoning-memories.json#sha"
 }
 ```
 

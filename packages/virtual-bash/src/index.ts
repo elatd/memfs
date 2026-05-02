@@ -1,5 +1,5 @@
 import {
-  MemoryFS,
+  VeriFS,
   normalizeMemoryPath,
   type AgentRun,
   type BriefResponse,
@@ -9,10 +9,10 @@ import {
   type MemoryPromotion,
   type RecallResponse,
   type SyncStatus
-} from "@memoryfs/core";
+} from "@verifs/core";
 
-export interface MemoryFsShellOptions {
-  memoryfs: MemoryFS;
+export interface VeriFSShellOptions {
+  verifs: VeriFS;
   workspaceId: string;
   actor?: string;
   ingestWrites?: boolean;
@@ -32,8 +32,8 @@ export interface VirtualBashOptions {
   allowProtectedWrite?: boolean;
 }
 
-export class MemoryFsShell {
-  constructor(private readonly options: MemoryFsShellOptions) {}
+export class VeriFSShell {
+  constructor(private readonly options: VeriFSShellOptions) {}
 
   async exec(command: string): Promise<ShellExecResult> {
     const trimmed = command.trim();
@@ -86,7 +86,7 @@ export class MemoryFsShell {
 
   private ls(prefix: string): ShellExecResult {
     const normalizedPrefix = normalizeMemoryPath(prefix);
-    const files = this.options.memoryfs
+    const files = this.options.verifs
       .listFiles(this.options.workspaceId)
       .filter(
         (file) =>
@@ -99,13 +99,13 @@ export class MemoryFsShell {
 
   private async cat(filePath: string): Promise<ShellExecResult> {
     const normalizedPath = normalizeMemoryPath(filePath);
-    const file = await this.options.memoryfs.readFile(this.options.workspaceId, normalizedPath);
+    const file = await this.options.verifs.readFile(this.options.workspaceId, normalizedPath);
     return result("cat", file, file.content);
   }
 
   private async write(filePath: string, content: string): Promise<ShellExecResult> {
     const normalizedPath = normalizeMemoryPath(filePath);
-    const file = await this.options.memoryfs.writeFile(this.options.workspaceId, normalizedPath, content, {
+    const file = await this.options.verifs.writeFile(this.options.workspaceId, normalizedPath, content, {
       actor: this.options.actor ?? "agent:virtual-bash",
       ingest: this.options.ingestWrites ?? true,
       allow_protected_write: this.options.allowProtectedWrite ?? false
@@ -117,13 +117,13 @@ export class MemoryFsShell {
     const normalizedPath = normalizeMemoryPath(filePath);
     let existing = "";
     try {
-      existing = (await this.options.memoryfs.readFile(this.options.workspaceId, normalizedPath)).content;
+      existing = (await this.options.verifs.readFile(this.options.workspaceId, normalizedPath)).content;
     } catch {
       existing = "";
     }
 
     const next = existing ? `${existing}\n${content}` : content;
-    const file = await this.options.memoryfs.writeFile(this.options.workspaceId, normalizedPath, next, {
+    const file = await this.options.verifs.writeFile(this.options.workspaceId, normalizedPath, next, {
       actor: this.options.actor ?? "agent:virtual-bash",
       ingest: this.options.ingestWrites ?? true,
       allow_protected_write: this.options.allowProtectedWrite ?? false
@@ -133,7 +133,7 @@ export class MemoryFsShell {
 
   private async rm(filePath: string): Promise<ShellExecResult> {
     const normalizedPath = normalizeMemoryPath(filePath);
-    await this.options.memoryfs.deleteFile(this.options.workspaceId, normalizedPath, {
+    await this.options.verifs.deleteFile(this.options.workspaceId, normalizedPath, {
       actor: this.options.actor ?? "agent:virtual-bash",
       allow_protected_write: this.options.allowProtectedWrite ?? false
     });
@@ -148,7 +148,7 @@ export class MemoryFsShell {
   private async grep(args: string[]): Promise<ShellExecResult<MemoryGrepResponse>> {
     const parsed = parseGrepArgs(args, "literal");
     const query = requiredArg(parsed.query.trim(), "grep requires a query.");
-    const search = await this.options.memoryfs.grepMemory(this.options.workspaceId, query, {
+    const search = await this.options.verifs.grepMemory(this.options.workspaceId, query, {
       mode: parsed.mode,
       trust_min: parsed.trust_min,
 	      scope: parsed.scope,
@@ -163,7 +163,7 @@ export class MemoryFsShell {
   private async search(args: string[]): Promise<ShellExecResult<MemoryGrepResponse>> {
     const parsed = parseGrepArgs(args, "hybrid");
     const query = requiredArg(parsed.query.trim(), "search requires a query.");
-    const search = await this.options.memoryfs.grepMemory(this.options.workspaceId, query, {
+    const search = await this.options.verifs.grepMemory(this.options.workspaceId, query, {
       mode: parsed.mode,
       trust_min: parsed.trust_min,
       scope: parsed.scope,
@@ -176,7 +176,7 @@ export class MemoryFsShell {
   }
 
   private async recall(query: string): Promise<ShellExecResult<RecallResponse>> {
-    const recall = await this.options.memoryfs.recallMemory(this.options.workspaceId, query, {
+    const recall = await this.options.verifs.recallMemory(this.options.workspaceId, query, {
       include_detail: true,
       include_raw: false,
       limit: 8
@@ -198,7 +198,7 @@ export class MemoryFsShell {
 
   private async brief(task: string): Promise<ShellExecResult<BriefResponse>> {
     const cleaned = requiredArg(task.trim(), "brief requires a task.");
-    const brief = await this.options.memoryfs.createBrief(this.options.workspaceId, {
+    const brief = await this.options.verifs.createBrief(this.options.workspaceId, {
       task: cleaned,
       actor: this.options.actor ?? "agent:virtual-bash",
       mode: "task_preparation",
@@ -215,14 +215,14 @@ export class MemoryFsShell {
 
     if (subcommand === "create") {
       const task = requiredArg(args.slice(1).join(" ").trim(), "run create requires a task.");
-      const run = await this.options.memoryfs.createRun(this.options.workspaceId, { task, actor });
+      const run = await this.options.verifs.createRun(this.options.workspaceId, { task, actor });
       return result("run", run, formatRun(run));
     }
 
     if (subcommand === "complete") {
       const runId = requiredArg(args[1], "run complete requires a run id.");
       const resultText = args.slice(2).join(" ").trim();
-      const run = await this.options.memoryfs.completeRun(this.options.workspaceId, runId, {
+      const run = await this.options.verifs.completeRun(this.options.workspaceId, runId, {
         actor,
         result: resultText || undefined
       });
@@ -231,7 +231,7 @@ export class MemoryFsShell {
 
     if (subcommand === "compile") {
       const runId = requiredArg(args[1], "run compile requires a run id.");
-      const compiled = await this.options.memoryfs.compileRun(this.options.workspaceId, runId, {
+      const compiled = await this.options.verifs.compileRun(this.options.workspaceId, runId, {
         actor,
         reasoning: args.includes("--reasoning")
       });
@@ -240,12 +240,12 @@ export class MemoryFsShell {
 
     if (subcommand === "show") {
       const runId = requiredArg(args[1], "run show requires a run id.");
-      const run = this.options.memoryfs.getRun(this.options.workspaceId, runId);
+      const run = this.options.verifs.getRun(this.options.workspaceId, runId);
       return result("run", run, formatRun(run));
     }
 
     if (subcommand === "list") {
-      const runs = this.options.memoryfs.listRuns(this.options.workspaceId);
+      const runs = this.options.verifs.listRuns(this.options.workspaceId);
       return result("run", runs, runs.map(formatRun).join("\n") || "(no runs)");
     }
 
@@ -265,7 +265,7 @@ export class MemoryFsShell {
   private node(args: string[]): ShellExecResult {
     const subcommand = args[0];
     if (subcommand === "list") {
-      const nodes = this.options.memoryfs.listMemoryNodes(this.options.workspaceId);
+      const nodes = this.options.verifs.listMemoryNodes(this.options.workspaceId);
       return result(
         "node",
         nodes,
@@ -275,7 +275,7 @@ export class MemoryFsShell {
     }
 
     if (subcommand === "read") {
-      const node = this.options.memoryfs.getMemoryNode(
+      const node = this.options.verifs.getMemoryNode(
         this.options.workspaceId,
         requiredArg(args[1], "node read requires a node id.")
       );
@@ -290,14 +290,14 @@ export class MemoryFsShell {
   }
 
   private async raw(nodeId: string): Promise<ShellExecResult> {
-    const content = await this.options.memoryfs.readRawForNode(this.options.workspaceId, nodeId);
+    const content = await this.options.verifs.readRawForNode(this.options.workspaceId, nodeId);
     return result("raw", { node_id: nodeId, content }, content);
   }
 
   private async promote(args: string[]): Promise<ShellExecResult<MemoryPromotion>> {
     const sourcePath = requiredArg(args[0], "promote requires a source path.");
     const targetPath = requiredArg(optionValue(args, "--to"), "promote requires --to <target_path>.");
-    const promotion = await this.options.memoryfs.promoteMemory(this.options.workspaceId, {
+    const promotion = await this.options.verifs.promoteMemory(this.options.workspaceId, {
       source_path: sourcePath,
       target_path: targetPath,
       source_node_id: optionValue(args, "--node"),
@@ -309,7 +309,7 @@ export class MemoryFsShell {
   }
 
   private health(): ShellExecResult<MemoryHealthReport> {
-    const health = this.options.memoryfs.getMemoryHealth(this.options.workspaceId);
+    const health = this.options.verifs.getMemoryHealth(this.options.workspaceId);
     return result("health", health, formatHealth(health));
   }
 
@@ -317,14 +317,14 @@ export class MemoryFsShell {
     if (args[0] !== "status") {
       throw new Error("Usage: sync status");
     }
-    const status = this.options.memoryfs.getSyncStatus(this.options.workspaceId);
+    const status = this.options.verifs.getSyncStatus(this.options.workspaceId);
     return result("sync", status, formatSyncStatus(status));
   }
 
   private status(): ShellExecResult {
-    const workspace = this.options.memoryfs.getWorkspace(this.options.workspaceId);
-    const files = this.options.memoryfs.listFiles(this.options.workspaceId);
-    const nodes = this.options.memoryfs.listMemoryNodes(this.options.workspaceId);
+    const workspace = this.options.verifs.getWorkspace(this.options.workspaceId);
+    const files = this.options.verifs.listFiles(this.options.workspaceId);
+    const nodes = this.options.verifs.listMemoryNodes(this.options.workspaceId);
     return result(
       "status",
       { workspace, file_count: files.length, memory_node_count: nodes.length },
@@ -333,10 +333,10 @@ export class MemoryFsShell {
   }
 }
 
-export class VirtualBash extends MemoryFsShell {
-  constructor(memoryfs: MemoryFS, workspaceId: string, options: VirtualBashOptions = {}) {
+export class VirtualBash extends VeriFSShell {
+  constructor(verifs: VeriFS, workspaceId: string, options: VirtualBashOptions = {}) {
     super({
-      memoryfs,
+      verifs,
       workspaceId,
       actor: options.actor,
       ingestWrites: options.ingestWrites,
@@ -345,8 +345,8 @@ export class VirtualBash extends MemoryFsShell {
   }
 }
 
-export function createMemoryFsShell(options: MemoryFsShellOptions): MemoryFsShell {
-  return new MemoryFsShell(options);
+export function createVeriFSShell(options: VeriFSShellOptions): VeriFSShell {
+  return new VeriFSShell(options);
 }
 
 export function splitArgs(command: string): string[] {
@@ -409,7 +409,7 @@ export function splitArgs(command: string): string[] {
 
 function rejectInjection(command: string): void {
   if (/(^|[^\\])(?:;|\|\||&&|`|\$\(|\||<|>)/.test(command)) {
-    throw new Error("Unsupported shell syntax. MemFS virtual bash only accepts explicit supported commands.");
+    throw new Error("Unsupported shell syntax. VeriFS virtual bash only accepts explicit supported commands.");
   }
 }
 

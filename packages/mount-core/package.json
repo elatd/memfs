@@ -1,5 +1,5 @@
 {
-  "name": "@memoryfs/mount-core",
+  "name": "@verifs/mount-core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@memoryfs/core": "workspace:*",
-    "@memoryfs/sdk": "workspace:*"
+    "@verifs/core": "workspace:*",
+    "@verifs/sdk": "workspace:*"
   }
 }

@@ -5,8 +5,8 @@ Local SQLite mode remains the default. Postgres support is added behind a metada
 Configuration:
 
 ```bash
-MEMFS_MODE=team
-MEMFS_DATABASE_URL=postgres://user:password@localhost:5432/memfs
+VERIFS_MODE=team
+VERIFS_DATABASE_URL=postgres://user:password@localhost:5432/verifs
 ```
 
 Postgres-compatible migrations are stored in:

@@ -1,4 +1,4 @@
-# MemFS Smoke Dataset
+# VeriFS Smoke Dataset
 
 This deterministic JSONL dataset exercises the first adapter-based benchmark harness without external model calls.
 

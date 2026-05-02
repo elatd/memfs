@@ -1,17 +1,17 @@
 import { fileURLToPath } from "node:url";
-import { MemFSAdapter } from "../adapters/memfs-adapter.js";
+import { VeriFSAdapter } from "../adapters/verifs-adapter.js";
 import { runSmokeSuite } from "./smoke-suite.js";
 
 const resultsJsonPath = fileURLToPath(
-  new URL("../../results/memfs-regression-results.json", import.meta.url)
+  new URL("../../results/verifs-regression-results.json", import.meta.url)
 );
 const reportMarkdownPath = fileURLToPath(
-  new URL("../../results/memfs-regression-report.md", import.meta.url)
+  new URL("../../results/verifs-regression-report.md", import.meta.url)
 );
 
 const result = await runSmokeSuite({
-  benchmarkName: "memfs-regression",
-  adapters: [new MemFSAdapter()],
+  benchmarkName: "verifs-regression",
+  adapters: [new VeriFSAdapter()],
   resultsJsonPath,
   reportMarkdownPath
 });
@@ -19,7 +19,7 @@ const result = await runSmokeSuite({
 const [adapter] = result.adapters;
 
 if (!adapter) {
-  throw new Error("MemFS regression did not produce an adapter result.");
+  throw new Error("VeriFS regression did not produce an adapter result.");
 }
 
 console.log(

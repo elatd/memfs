@@ -33,7 +33,7 @@ POST /workspaces/:id/memory/health/recompute
 
 The dashboard trust panel shows the score, high-signal counts, pending promotions, snapshots, and contradiction status.
 
-Temporal health fields help MemFS explain what changed over time:
+Temporal health fields help VeriFS explain what changed over time:
 
 - `stale_node_count` includes memories explicitly marked stale, conflicted, superseded, past `valid_until`, or past TTL.
 - `old_node_count` counts non-rejected memories whose confirmation/update timestamp is older than the current health threshold.
@@ -41,4 +41,4 @@ Temporal health fields help MemFS explain what changed over time:
 - `superseded_node_count` counts memories marked superseded by status or trust metadata.
 - `conflicted_node_count` counts memories marked conflicted for review.
 
-Stale and superseded memory is kept for audit and rollback. Normal recall excludes it unless callers opt in with stale/audit-oriented options such as `include_stale` or `memfs grep --include-stale`.
+Stale and superseded memory is kept for audit and rollback. Normal recall excludes it unless callers opt in with stale/audit-oriented options such as `include_stale` or `verifs grep --include-stale`.

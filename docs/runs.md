@@ -16,6 +16,6 @@ Every run creates:
 - `/runs/<run_id>/candidates.md`
 - `/runs/<run_id>/reasoning-memories.json`
 
-Use `POST /workspaces/:id/runs` or `memfs run create "<task>"` to create a run. File reads, recalls, raw opens, and arbitrary events can be logged to the run.
+Use `POST /workspaces/:id/runs` or `verifs run create "<task>"` to create a run. File reads, recalls, raw opens, and arbitrary events can be logged to the run.
 
-Use `memfs run compile <run_id> --reasoning` to extract reusable, reviewable lessons from run artifacts. Use `memfs run lessons <run_id>` to inspect those reasoning memory candidates.
+Use `verifs run compile <run_id> --reasoning` to extract reusable, reviewable lessons from run artifacts. Use `verifs run lessons <run_id>` to inspect those reasoning memory candidates.

@@ -1,6 +1,6 @@
-# MemFS Benchmarks
+# VeriFS Benchmarks
 
-MemFS benchmarks are local, deterministic checks for source-backed memory behavior.
+VeriFS benchmarks are local, deterministic checks for source-backed memory behavior.
 
 Run the smoke suite:
 
@@ -8,13 +8,13 @@ Run the smoke suite:
 pnpm bench:smoke
 ```
 
-Run the MemFS-only regression slice:
+Run the VeriFS-only regression slice:
 
 ```bash
-pnpm bench:memfs
+pnpm bench:verifs
 ```
 
-The smoke suite compares a `no-memory` baseline with the real MemFS adapter. It writes JSON and Markdown reports to `benchmarks/results/`; those files are generated artifacts and are not committed.
+The smoke suite compares a `no-memory` baseline with the real VeriFS adapter. It writes JSON and Markdown reports to `benchmarks/results/`; those files are generated artifacts and are not committed.
 
 The current smoke dataset is intentionally small. A 100% score means the benchmark harness and deterministic fixtures are healthy. It does not claim external benchmark superiority or broad retrieval performance.
 

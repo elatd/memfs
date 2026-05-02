@@ -5,7 +5,7 @@ Promotions move candidate memory into durable paths through review.
 Create a promotion:
 
 ```bash
-memfs promote /scratch/idea.md --to /preferences.md
+verifs promote /scratch/idea.md --to /preferences.md
 ```
 
 API:
