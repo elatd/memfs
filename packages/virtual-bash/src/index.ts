@@ -59,8 +59,10 @@ export class MemoryFsShell {
         return this.mkdir(requiredArg(args[0], "mkdir requires a path."));
       case "grep":
         return this.grep(args);
+      case "search":
+        return this.search(args);
       case "sgrep":
-        return this.sgrep(requiredArg(args[0], "sgrep requires a query."));
+        return this.sgrep(args);
       case "recall":
         return this.recall(requiredArg(args[0], "recall requires a query."));
       case "brief":
@@ -146,7 +148,7 @@ export class MemoryFsShell {
   }
 
   private async grep(args: string[]): Promise<ShellExecResult<MemoryGrepResponse>> {
-    const parsed = parseGrepArgs(args);
+    const parsed = parseGrepArgs(args, "literal");
     const query = requiredArg(parsed.query.trim(), "grep requires a query.");
     const search = await this.options.memoryfs.grepMemory(this.options.workspaceId, query, {
       mode: parsed.mode,
@@ -160,19 +162,24 @@ export class MemoryFsShell {
     return result("grep", search, formatGrep(search));
   }
 
-  private async sgrep(query: string): Promise<ShellExecResult<RecallResponse>> {
-    const recall = await this.options.memoryfs.recallMemory(this.options.workspaceId, query, {
-      include_detail: true,
-      include_raw: false,
-      limit: 8
+  private async search(args: string[]): Promise<ShellExecResult<MemoryGrepResponse>> {
+    const parsed = parseGrepArgs(args, "hybrid");
+    const query = requiredArg(parsed.query.trim(), "search requires a query.");
+    const search = await this.options.memoryfs.grepMemory(this.options.workspaceId, query, {
+      mode: parsed.mode,
+      trust_min: parsed.trust_min,
+      scope: parsed.scope,
+      include_runs: parsed.include_runs,
+      include_sources: parsed.include_sources,
+      include_stale: parsed.include_stale,
+      limit: parsed.limit
     });
-    return result(
-      "sgrep",
-      recall,
-      recall.results
-        .map((item) => `${item.source_path} [${item.score.toFixed(2)}] ${item.summary}\n  raw_ref: ${item.raw_ref}`)
-        .join("\n") || "(no results)"
-    );
+    return result("search", search, formatGrep(search));
+  }
+
+  private async sgrep(args: string[]): Promise<ShellExecResult<MemoryGrepResponse>> {
+    const search = await this.search(["--semantic", ...args]);
+    return result("sgrep", search.data, search.displayText);
   }
 
   private async recall(query: string): Promise<ShellExecResult<RecallResponse>> {
@@ -435,24 +442,24 @@ function optionValue(args: string[], flag: string): string | undefined {
   return args[index + 1];
 }
 
-function parseGrepArgs(args: string[]): {
+function parseGrepArgs(args: string[], defaultMode: "literal" | "semantic" | "hybrid" = "literal"): {
   query: string;
   mode: "literal" | "semantic" | "hybrid";
   scope?: string[];
   trust_min?: "ephemeral" | "agent_generated" | "source_backed" | "reviewed" | "trusted" | "superseded" | "rejected";
-	  include_runs?: boolean;
-	  include_sources?: boolean;
-	  include_stale?: boolean;
-	  limit?: number;
+  include_runs?: boolean;
+  include_sources?: boolean;
+  include_stale?: boolean;
+  limit?: number;
 } {
   const queryParts: string[] = [];
   const scope: string[] = [];
-  let mode: "literal" | "semantic" | "hybrid" = "hybrid";
+  let mode: "literal" | "semantic" | "hybrid" = defaultMode;
   let trustMin: "ephemeral" | "agent_generated" | "source_backed" | "reviewed" | "trusted" | "superseded" | "rejected" | undefined;
-	  let includeRuns: boolean | undefined;
-	  let includeSources: boolean | undefined;
-	  let includeStale: boolean | undefined;
-	  let limit: number | undefined;
+  let includeRuns: boolean | undefined;
+  let includeSources: boolean | undefined;
+  let includeStale: boolean | undefined;
+  let limit: number | undefined;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!;
@@ -472,11 +479,11 @@ function parseGrepArgs(args: string[]): {
       includeRuns = false;
     } else if (arg === "--include-sources") {
       includeSources = true;
-	    } else if (arg === "--no-sources") {
-	      includeSources = false;
-	    } else if (arg === "--include-stale") {
-	      includeStale = true;
-	    } else if (arg === "--scope") {
+    } else if (arg === "--no-sources") {
+      includeSources = false;
+    } else if (arg === "--include-stale") {
+      includeStale = true;
+    } else if (arg === "--scope") {
       const value = args[++index];
       if (value) scope.push(...value.split(",").map((entry) => entry.trim()).filter(Boolean));
     } else if (arg === "--limit") {
@@ -491,23 +498,60 @@ function parseGrepArgs(args: string[]): {
     query: queryParts.join(" "),
     mode,
     scope: scope.length ? scope : undefined,
-	    trust_min: trustMin,
-	    include_runs: includeRuns,
-	    include_sources: includeSources,
-	    include_stale: includeStale,
-	    limit
+    trust_min: trustMin,
+    include_runs: includeRuns,
+    include_sources: includeSources,
+    include_stale: includeStale,
+    limit
   };
 }
 
 function formatGrep(response: MemoryGrepResponse): string {
   return response.results
-    .map((item) => {
+    .map((item, index) => {
       const location = item.line ? `${item.path}:${item.line}` : item.path;
       const node = item.node_id ? ` node=${item.node_id}` : "";
       const raw = item.raw_ref ? `\n  raw_ref: ${item.raw_ref}` : "";
-      return `${location} [${item.score.toFixed(2)} ${item.match_type} trust=${item.trust ?? "unknown"}${node}]\n  ${item.snippet}${raw}`;
+      return [
+        `${index + 1}. ${location}`,
+        `   match: ${displayMatchType(item.match_type)}`,
+        `   trust: ${item.trust ?? "unknown"}${node}`,
+        `   why: ${matchReason(item.match_type)}`,
+        `   snippet: ${item.snippet}`,
+        raw ? `   ${raw.trim()}` : ""
+      ]
+        .filter(Boolean)
+        .join("\n");
     })
     .join("\n") || "(no results)";
+}
+
+function displayMatchType(matchType: string): string {
+  if (matchType === "literal" || matchType === "extracted" || matchType === "archive") return "exact";
+  if (matchType === "lexical") return "lexical";
+  if (matchType === "memory" || matchType === "run" || matchType === "handoff") return "memory";
+  return "semantic";
+}
+
+function matchReason(matchType: string): string {
+  switch (matchType) {
+    case "literal":
+      return "exact text match in source file";
+    case "lexical":
+      return "related words matched in source file";
+    case "extracted":
+      return "match in extracted source text";
+    case "archive":
+      return "exact text match in archived source";
+    case "run":
+      return "semantic match in run memory";
+    case "handoff":
+      return "semantic match in handoff memory";
+    case "memory":
+      return "semantic match in memory index";
+    default:
+      return "semantic memory search match";
+  }
 }
 
 function formatRun(run: AgentRun): string {

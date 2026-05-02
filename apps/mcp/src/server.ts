@@ -266,7 +266,7 @@ export function createMemfsMcpToolHandlers(memoryfs: MemoryFS): McpToolHandlers 
     memfs_grep: async ({
       workspace_id,
       query,
-      mode = "hybrid",
+      mode = "literal",
       scope,
       project_slug,
       repo_path,
@@ -670,11 +670,11 @@ function registerTools(server: McpServer, handlers: McpToolHandlers): void {
   );
   server.tool(
     "memfs_grep",
-    "Hybrid grep over MemFS files, extracted text, memory nodes, runs, handoffs, and source-backed context.",
+    "Exact grep over MemFS files by default. Pass mode=hybrid or mode=semantic for meaning-oriented matching.",
     {
       workspace_id: z.string(),
       query: z.string(),
-      mode: z.enum(["literal", "semantic", "hybrid"]).default("hybrid"),
+      mode: z.enum(["literal", "semantic", "hybrid"]).default("literal"),
       scope: z.array(z.string()).optional(),
       project_slug: z.string().optional(),
       repo_path: z.string().optional(),
@@ -1312,7 +1312,7 @@ function registerLegacyAliases(server: McpServer, handlers: McpToolHandlers): vo
     {
       workspace_id: z.string(),
       query: z.string(),
-      mode: z.enum(["literal", "semantic", "hybrid"]).default("hybrid"),
+      mode: z.enum(["literal", "semantic", "hybrid"]).default("literal"),
       scope: z.array(z.string()).optional(),
       project_slug: z.string().optional(),
       repo_path: z.string().optional(),

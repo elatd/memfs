@@ -1789,7 +1789,7 @@ export class MemoryFS {
       throw new MemoryFSError("Memory grep query is required.");
     }
 
-    const mode = options.mode ?? "hybrid";
+    const mode = options.mode ?? "literal";
     const limit = clampLimit(options.limit ?? 20, 1, 100);
     const includeSources = options.include_sources ?? true;
     const includeRuns = options.include_runs ?? true;

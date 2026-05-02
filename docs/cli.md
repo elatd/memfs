@@ -26,10 +26,11 @@ memfs rm /scratch/note.md
 memfs upload ./status.csv --to /uploads/status.csv
 memfs extract /uploads/status.csv
 memfs extracted /uploads/status.csv
-memfs grep "onboarding"
+memfs grep "OAuth refresh tokens"
 memfs grep "OAuth refresh tokens" --scope project --project pipsqueak
-memfs grep "backend plan" --include-stale
-memfs sgrep "onboarding decision"
+memfs search "onboarding decision"
+memfs search "backend plan" --include-stale
+memfs search --semantic "hosting preference"
 memfs recall "What should I remember before changing onboarding?"
 memfs recall "deployment constraints" --scope workspace
 memfs recall "OAuth token flow" --include-related
@@ -98,15 +99,26 @@ If no workspace is selected, commands that need one print:
 No workspace selected. Run: memfs workspace list && memfs use <workspace>
 ```
 
-`memfs raw` is the explicit raw source command. Grep, semantic grep, and recall do not fetch raw source content by default.
+Retrieval rule of thumb:
 
-Scope filters are optional. Use `--scope project --project <slug>`, `--scope repo --repo <path>`, `--scope run --run <id>`, or the corresponding session, agent, and contact flags to narrow recall and memory grep.
+```text
+Know the words?   use grep
+Know the idea?    use search
+Starting a task?  use recall or brief
+Need proof?       open source_path or raw_ref
+```
+
+`memfs grep` is exact text search by default. Use `memfs search` for meaning-oriented hybrid search, and `memfs recall` for curated task context. `memfs sgrep` remains as a deprecated compatibility alias for `memfs search --semantic`, but it is not the primary interface.
+
+`memfs raw` is the explicit raw source command. Grep, search, and recall do not fetch raw source content by default.
+
+Scope filters are optional. Use `--scope project --project <slug>`, `--scope repo --repo <path>`, `--scope run --run <id>`, or the corresponding session, agent, and contact flags to narrow grep, search, and recall.
 
 `memfs upload` reads a local file, stores the raw bytes as the canonical blob, and can ingest memory unless `--no-ingest` is set. `memfs extract` stores derived text and source metadata without reading raw source into recall responses. `memfs extracted` prints the extracted text plus source-location hints.
 
 Promotion commands create reviewable durable memory. Candidate commands list, inspect, edit, approve, or reject the proposed memory node behind a promotion. Use `memfs candidates --duplicates` and `memfs candidates --conflicts` to focus review queues. Resolve conflicts with `memfs candidate resolve-conflict <id> --mode keep_new|keep_old|keep_both|mark_superseded`. `memfs candidate approve` and `memfs approve` both apply durable memory through the protected promotion path; rejection keeps the source file and audit trail but prevents the candidate from normal recall.
 
-Temporal memory commands mark old assumptions stale, confirm current memories, or link old memories to replacements. Normal recall and grep exclude stale, conflicted, and superseded memory unless `--include-stale` is provided.
+Temporal memory commands mark old assumptions stale, confirm current memories, or link old memories to replacements. Normal recall, grep, and search exclude stale, conflicted, and superseded memory unless `--include-stale` is provided.
 
 Graph commands inspect and maintain associative memory links. `memfs graph node <node_id>` shows typed relationships for a memory node, `memfs graph related <node_id>` traverses nearby memories, and `memfs graph link` creates a source-backed typed edge such as `supports`, `contradicts`, `supersedes`, `derived_from`, `implemented_in`, `observed_in`, `applies_to`, or `blocked_by`.
 

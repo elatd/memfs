@@ -101,6 +101,7 @@ Upload body:
 ## Memory
 
 - `POST /workspaces/:id/memory/ingest-file`
+- `POST /workspaces/:id/memory/grep`
 - `POST /workspaces/:id/memory/search`
 - `POST /workspaces/:id/memory/recall`
 - `GET /workspaces/:id/memory/nodes`
@@ -137,7 +138,16 @@ Recall results always include `source_path` and `raw_ref`. Raw content appears o
 When available, results also include `source_location`, `source_kind`, and `extractor_name`.
 Normal recall excludes stale, conflicted, and superseded memory. Set `include_stale=true` for audit/review queries.
 
-`/memory/search` and `/memory/recall` remain POST-compatible for CLI, dashboard, virtual bash, and MCP. Search is intended for hybrid grep-style workflows; recall is intended for trigger-first progressive memory retrieval.
+Retrieval rule of thumb:
+
+```text
+Know the words?   use /memory/grep
+Know the idea?    use /memory/search
+Starting a task?  use /memory/recall or briefs
+Need proof?       open source_path or raw_ref
+```
+
+`/memory/grep` is exact text search by default; pass `mode: "hybrid"` or `mode: "semantic"` for broader matching. `/memory/search` is meaning-oriented retrieval. `/memory/recall` is trigger-first progressive task context.
 
 Recall response:
 

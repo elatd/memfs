@@ -406,9 +406,11 @@ export async function runCli(argv: string[], options: CliRunOptions = {}): Promi
       case "extracted":
         return await extractedCommand(client, env, io, parsed, required(subcommand, "memfs extracted requires a MemFS path."));
       case "grep":
-        return await memorySearch(client, env, io, parsed, [subcommand, ...rest].filter(isString), false);
+        return await memoryGrepCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString), "grep", "literal");
+      case "search":
+        return await memoryGrepCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString), "search", "hybrid");
       case "sgrep":
-        return await memorySearch(client, env, io, parsed, [subcommand, ...rest].filter(isString), true);
+        return await memoryGrepCommand(client, env, io, parsed, ["--semantic", subcommand, ...rest].filter(isString), "sgrep", "hybrid");
       case "recall":
         return await recallCommand(client, env, io, parsed, [subcommand, ...rest].filter(isString));
       case "node":
@@ -1316,27 +1318,18 @@ async function extractedCommand(
   });
 }
 
-async function memorySearch(
+async function memoryGrepCommand(
   client: MemoryFSClient,
   env: NodeJS.ProcessEnv,
   io: CliIo,
   parsed: ParsedArgs,
   args: string[],
-  semantic: boolean
+  commandName: "grep" | "search" | "sgrep",
+  defaultMode: "literal" | "semantic" | "hybrid"
 ): Promise<number> {
   return withWorkspace(client, env, io, parsed, async (workspaceId) => {
-    if (semantic) {
-      const cleaned = required(args.join(" ").trim(), "memfs sgrep requires a query.");
-      const response = (await client.recallMemory(workspaceId, cleaned, {
-        include_detail: true,
-        include_raw: false
-      })) as RecallResponse;
-      output(io, parsed, formatSearchResults(response.results), response);
-      return;
-    }
-
-    const grep = parseGrepArgs(args);
-    const cleaned = required(grep.query.trim(), "memfs grep requires a query.");
+    const grep = parseGrepArgs(args, defaultMode);
+    const cleaned = required(grep.query.trim(), `memfs ${commandName} requires a query.`);
     const response = (await client.grepMemory(workspaceId, cleaned, {
       mode: grep.mode,
       scope: grep.scope,
@@ -1463,35 +1456,52 @@ async function withWorkspace(
   return 0;
 }
 
-function formatSearchResults(results: RecallResult[]): string {
-  return (
-    results
-      .map(
-        (result) =>
-          `${result.source_path} [${result.score.toFixed(2)}] ${result.memory_type} importance=${result.importance}\n` +
-          `  ${result.summary}\n` +
-          `  trigger: ${result.trigger}\n` +
-          `  raw_ref: ${result.raw_ref}`
-      )
-      .join("\n\n") || "(no results)"
-  );
-}
-
 function formatMemoryGrep(response: MemoryGrepResponse): string {
   return (
     response.results
-      .map((result) => {
+      .map((result, index) => {
         const location = result.line ? `${result.path}:${result.line}` : result.path;
         const node = result.node_id ? ` node=${result.node_id}` : "";
         const raw = result.raw_ref ? `\n  raw_ref: ${result.raw_ref}` : "";
         return (
-          `${location} [${result.score.toFixed(2)} ${result.match_type} trust=${result.trust ?? "unknown"}${node}]\n` +
-          `  ${result.snippet}\n` +
-          `  source: ${result.source_path}${raw}`
+          `${index + 1}. ${location}\n` +
+          `   match: ${displayMatchType(result.match_type)}\n` +
+          `   trust: ${result.trust ?? "unknown"}${node}\n` +
+          `   why: ${matchReason(result.match_type)}\n` +
+          `   snippet: ${result.snippet}\n` +
+          `   source: ${result.source_path}${raw}`
         );
       })
       .join("\n\n") || "(no results)"
   );
+}
+
+function displayMatchType(matchType: string): string {
+  if (matchType === "literal" || matchType === "extracted" || matchType === "archive") return "exact";
+  if (matchType === "lexical") return "lexical";
+  if (matchType === "memory" || matchType === "run" || matchType === "handoff") return "memory";
+  return "semantic";
+}
+
+function matchReason(matchType: string): string {
+  switch (matchType) {
+    case "literal":
+      return "exact text match in source file";
+    case "lexical":
+      return "related words matched in source file";
+    case "extracted":
+      return "match in extracted source text";
+    case "archive":
+      return "exact text match in archived source";
+    case "run":
+      return "semantic match in run memory";
+    case "handoff":
+      return "semantic match in handoff memory";
+    case "memory":
+      return "semantic match in memory index";
+    default:
+      return "semantic memory search match";
+  }
 }
 
 function formatRecall(response: RecallResponse): string {
@@ -1749,7 +1759,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   return { args, json, allowProtected, ingest, dryRun };
 }
 
-function parseGrepArgs(args: string[]): {
+function parseGrepArgs(args: string[], defaultMode: "literal" | "semantic" | "hybrid" = "literal"): {
   query: string;
   mode: "literal" | "semantic" | "hybrid";
   scope?: string[];
@@ -1758,21 +1768,21 @@ function parseGrepArgs(args: string[]): {
   session_id?: string;
   agent_id?: string;
   contact_id?: string;
-	  run_id?: string;
-	  trust_min?: string;
-	  include_runs?: boolean;
-	  include_sources?: boolean;
-	  include_stale?: boolean;
-	  limit?: number;
-	  project_hint?: string;
+  run_id?: string;
+  trust_min?: string;
+  include_runs?: boolean;
+  include_sources?: boolean;
+  include_stale?: boolean;
+  limit?: number;
+  project_hint?: string;
 } {
   const scoped = parseScopedQueryArgs(args);
-	  let mode: "literal" | "semantic" | "hybrid" = "hybrid";
-	  let trustMin: string | undefined;
-	  let includeRuns: boolean | undefined;
-	  let includeSources: boolean | undefined;
-	  let includeStale: boolean | undefined;
-	  let limit: number | undefined;
+  let mode: "literal" | "semantic" | "hybrid" = defaultMode;
+  let trustMin: string | undefined;
+  let includeRuns: boolean | undefined;
+  let includeSources: boolean | undefined;
+  let includeStale: boolean | undefined;
+  let limit: number | undefined;
 
   for (let index = 0; index < scoped.remainingFlags.length; index += 1) {
     const arg = scoped.remainingFlags[index]!;
@@ -1788,15 +1798,15 @@ function parseGrepArgs(args: string[]): {
       trustMin = scoped.remainingFlags[++index];
     } else if (arg === "--include-runs") {
       includeRuns = true;
-	    } else if (arg === "--no-runs") {
-	      includeRuns = false;
-	    } else if (arg === "--include-sources") {
-	      includeSources = true;
-	    } else if (arg === "--no-sources") {
-	      includeSources = false;
-	    } else if (arg === "--include-stale") {
-	      includeStale = true;
-	    } else if (arg === "--limit") {
+    } else if (arg === "--no-runs") {
+      includeRuns = false;
+    } else if (arg === "--include-sources") {
+      includeSources = true;
+    } else if (arg === "--no-sources") {
+      includeSources = false;
+    } else if (arg === "--include-stale") {
+      includeStale = true;
+    } else if (arg === "--limit") {
       const value = Number(scoped.remainingFlags[++index]);
       if (Number.isFinite(value)) limit = value;
     }
@@ -1811,11 +1821,11 @@ function parseGrepArgs(args: string[]): {
     session_id: scoped.session_id,
     agent_id: scoped.agent_id,
     contact_id: scoped.contact_id,
-	    run_id: scoped.run_id,
-	    trust_min: trustMin,
-	    include_runs: includeRuns,
-	    include_sources: includeSources,
-	    include_stale: includeStale,
+    run_id: scoped.run_id,
+    trust_min: trustMin,
+    include_runs: includeRuns,
+    include_sources: includeSources,
+    include_stale: includeStale,
     limit,
     project_hint: scoped.project_slug
   };
@@ -2108,8 +2118,8 @@ function helpText(): string {
   memfs upload <local_path> [--to <memfs_path>]
   memfs extract <path>
   memfs extracted <path>
-	  memfs grep [--literal|-F|--semantic|--hybrid] [--scope <scope>] [--project <slug>] [--trusted-only] [--include-runs] [--include-stale] [--json] <query>
-  memfs sgrep <query>
+  memfs grep [--literal|-F] [--scope <scope>] [--project <slug>] [--trusted-only] [--include-runs] [--include-stale] [--json] <query>
+  memfs search [--semantic|--hybrid] [--scope <scope>] [--project <slug>] [--trusted-only] [--include-runs] [--include-stale] [--json] <query>
   memfs recall <query> [--scope <scope>] [--include-related]
   memfs node list [--scope <scope>]
   memfs node read <node_id>

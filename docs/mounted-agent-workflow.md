@@ -33,7 +33,7 @@ cat ~/MemFS/demo/.memfs/brief.results.md
 
 Each mount keeps its own latest `recall.results.md`, `search.results.md`, and `brief.results.md`; separate mounts do not share query state.
 
-`search.query` uses MemFS hybrid grep. `recall.query` uses normal trusted recall behavior and excludes stale, rejected, and superseded memory by default. `brief.query` creates a pre-task context pack without raw source content.
+`search.query` uses MemFS meaning-oriented hybrid search. `recall.query` uses normal trusted recall behavior and excludes stale, rejected, and superseded memory by default. `brief.query` creates a pre-task context pack without raw source content.
 
 All three result files include source paths, trust levels, scores, memory node ids, raw refs, and a reminder that raw source must be opened explicitly.
 

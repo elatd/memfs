@@ -173,8 +173,8 @@ await memoryfs.initialize();
 const workspace = memoryfs.createWorkspace("project_pipsqueak");
 const bash = new VirtualBash(memoryfs, workspace.id);
 
-await bash.exec('write /preferences.md "User prefers Netlify and Supabase"');
-const recall = await bash.exec("sgrep 'hosting preference'");
+await bash.exec('write /scratch/preferences.md "User prefers Netlify and Supabase"');
+const recall = await bash.exec("search 'hosting preference'");
 
 console.log(recall.displayText);
 ```

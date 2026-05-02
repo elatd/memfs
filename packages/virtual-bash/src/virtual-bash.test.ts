@@ -33,7 +33,7 @@ describe("virtual bash", () => {
     ]);
   });
 
-  it("executes ls cat write grep sgrep and recall", async () => {
+  it("executes ls cat write grep search sgrep and recall", async () => {
     const shell = createMemoryFsShell({ memoryfs, workspaceId });
 
     const write = await shell.exec('write /runs/demo/result.md "Decision: We decided to simplify onboarding."');
@@ -45,13 +45,18 @@ describe("virtual bash", () => {
     const cat = await shell.exec("cat /runs/demo/result.md");
     expect(cat.displayText).toContain("simplify onboarding");
 
-    const grep = await shell.exec('grep "simplify onboarding"');
-    expect(grep.displayText).toContain("/runs/demo/result.md");
-    expect(grep.displayText).toContain("trust=");
-    expect((grep.data as { mode: string; results: Array<{ match_type: string }> }).mode).toBe("hybrid");
+	    const grep = await shell.exec('grep "simplify onboarding"');
+	    expect(grep.displayText).toContain("/runs/demo/result.md");
+	    expect(grep.displayText).toContain("trust:");
+	    expect((grep.data as { mode: string; results: Array<{ match_type: string }> }).mode).toBe("literal");
 
-    const sgrep = await shell.exec('sgrep "onboarding decision"');
-    expect(sgrep.displayText).toContain("raw_ref:");
+	    const search = await shell.exec('search "onboarding decision"');
+	    expect(search.displayText).toContain("raw_ref:");
+	    expect((search.data as { mode: string; results: Array<{ match_type: string }> }).mode).toBe("hybrid");
+
+	    const sgrep = await shell.exec('sgrep "onboarding decision"');
+	    expect(sgrep.displayText).toContain("raw_ref:");
+	    expect((sgrep.data as { mode: string; results: Array<{ match_type: string }> }).mode).toBe("semantic");
 
     const recall = await shell.exec('recall "What should I remember before changing onboarding?"');
     expect(recall.displayText).toContain("source: /runs/demo/result.md");
