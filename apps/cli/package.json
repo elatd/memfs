@@ -11,6 +11,7 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
+    "@memoryfs/core": "workspace:*",
     "@memoryfs/mountd": "workspace:*",
     "@memoryfs/sdk": "workspace:*",
     "tsx": "^4.19.2"

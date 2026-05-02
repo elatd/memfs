@@ -30,7 +30,6 @@
     "@memoryfs/core": "workspace:*"
   },
   "devDependencies": {
-    "@memoryfs/cli": "workspace:*",
     "@types/node": "^22.10.2",
     "concurrently": "^9.1.2",
     "tsx": "^4.19.2",

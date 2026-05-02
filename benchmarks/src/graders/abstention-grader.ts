@@ -1,4 +1,4 @@
-export interface AbstentionGrade {
+interface AbstentionGrade {
   score: number;
   abstained: boolean;
   shouldAbstain: boolean;

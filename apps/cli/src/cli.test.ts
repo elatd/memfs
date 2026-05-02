@@ -227,6 +227,10 @@ describe("memfs CLI", () => {
     const search = await run("archive", "search", "OAuth refresh tokens");
     expect(search.stdout).toContain(entry.path);
     expect(search.stdout).toContain("archive");
+
+    const archiveGrep = await run("grep", "OAuth refresh tokens", "--scope", "archive", "--json");
+    const archiveGrepJson = JSON.parse(archiveGrep.stdout) as { results: Array<{ path: string; match_type: string }> };
+    expect(archiveGrepJson.results.some((result) => result.path === entry.path && result.match_type === "archive")).toBe(true);
   });
 
   it("recalls source-backed memory without raw content", async () => {

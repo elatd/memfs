@@ -1,6 +1,6 @@
 import type { MemoryRetrievedItem } from "../adapters/memory-system-adapter.js";
 
-export interface SourceRefGrade {
+interface SourceRefGrade {
   score: number;
   precision: number;
   recall: number;

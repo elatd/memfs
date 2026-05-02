@@ -2,8 +2,13 @@ import { describe, expect, it } from "vitest";
 import { PostgresMetadataStore, type MetadataBlob, type MetadataFile, type MetadataMemoryNode } from "./adapters.js";
 
 describe("metadata adapters", () => {
-  it("PostgresMetadataStore can create workspace, file, blob, and memory node with the test fallback", async () => {
+  it("PostgresMetadataStore requires explicit fallback when no connection is configured", async () => {
     const store = new PostgresMetadataStore();
+    await expect(store.initialize()).rejects.toThrow("connectionString, client, or explicit memoryFallback");
+  });
+
+  it("PostgresMetadataStore can create workspace, file, blob, and memory node with explicit test fallback", async () => {
+    const store = new PostgresMetadataStore({ memoryFallback: true });
     await store.initialize();
     try {
       const workspace = await store.createWorkspace("team-demo");
@@ -43,6 +48,10 @@ describe("metadata adapters", () => {
         trust_level: "source_backed",
         status: "active",
         ttl_expires_at: null,
+        scope: "project",
+        project_slug: "team-demo",
+        repo_path: "/repos/memfs",
+        run_id: "run-test",
         created_at: blob.created_at,
         updated_at: blob.created_at
       };
@@ -55,7 +64,11 @@ describe("metadata adapters", () => {
       expect(await store.getMemoryNode(node.id)).toMatchObject({
         id: node.id,
         source_file_id: file.id,
-        source_blob_sha256: blob.sha256
+        source_blob_sha256: blob.sha256,
+        scope: "project",
+        project_slug: "team-demo",
+        repo_path: "/repos/memfs",
+        run_id: "run-test"
       });
     } finally {
       await store.close();

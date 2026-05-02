@@ -6,7 +6,6 @@ import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
-import { createRequire } from "node:module";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -18,19 +17,11 @@ const configDir = path.join(tempDir, "config");
 const mountpoint = path.join(tempDir, "mount");
 let app: Awaited<ReturnType<typeof buildServer>> | null = null;
 let mountProcess: ChildProcess | null = null;
+let mountExit: { code: number | null; signal: NodeJS.Signals | null } | null = null;
 
 class SmokeSkip extends Error {}
 
 try {
-  try {
-    const require = createRequire(import.meta.url);
-    require("fuse-native");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (requireFuse) throw new Error(`FUSE is required but unavailable: ${message}`);
-    throw new SmokeSkip(`FUSE is unavailable in this environment: ${message}`);
-  }
-
   process.env.MEMORYFS_DATA_DIR = dataDir;
   process.env.OPENAI_API_KEY = "";
   app = await buildServer();
@@ -66,6 +57,9 @@ try {
       }
     }
   );
+  mountProcess.on("exit", (code, signal) => {
+    mountExit = { code, signal };
+  });
 
   await waitForMount();
   await execFileAsync("mkdir", ["-p", path.join(mountpoint, "runs/today")]);
@@ -117,6 +111,11 @@ async function waitForMount(): Promise<void> {
   while (Date.now() < deadline) {
     const entries = await listMountRegistry({ MEMFS_CONFIG_DIR: configDir });
     if (entries.some((entry) => entry.mountpoint === mountpoint)) return;
+    if (mountExit) {
+      const reason = `mount process exited with code ${mountExit.code ?? "null"} signal ${mountExit.signal ?? "null"}. Output:\n${lastOutput}`;
+      if (!requireFuse) throw new SmokeSkip(reason);
+      throw new Error(reason);
+    }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
 

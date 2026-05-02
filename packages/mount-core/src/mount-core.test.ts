@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MountCoreError, createCoreMountClient, createMountCore, type MountClient } from "./index.js";
+import { createCoreMountClient, createMountCore, type MountClient } from "./index.js";
 
 let tempDir: string;
 let memoryfs: MemoryFS;
@@ -239,6 +239,7 @@ describe("mount-core", () => {
               memory_type: "fact",
               importance: 3,
               confidence: 0.9,
+              scope: "workspace",
               score: 0.99,
               source_path: "/runs/test/result.md",
               raw_ref: "memoryfs://workspace/runs/test/result.md#blob",

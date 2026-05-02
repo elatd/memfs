@@ -14,9 +14,9 @@ export type FixtureLabel =
   | "onboardingDecision"
   | "onboardingFailure";
 
-export type RetrievalMode = "grep" | "brief";
+type RetrievalMode = "grep" | "brief";
 
-export interface FixtureFile {
+interface FixtureFile {
   label: FixtureLabel;
   path: string;
   content: string;
@@ -24,7 +24,7 @@ export interface FixtureFile {
   stale?: string;
 }
 
-export interface FixtureRun {
+interface FixtureRun {
   label: "supabase" | "largeUpload" | "onboarding";
   task: string;
   title: string;
@@ -35,7 +35,7 @@ export interface FixtureRun {
   compileReasoning?: boolean;
 }
 
-export interface FixtureArchive {
+interface FixtureArchive {
   label: FixtureLabel;
   archive_type: "conversation" | "transcript" | "imported" | "agent-run" | "raw";
   title: string;

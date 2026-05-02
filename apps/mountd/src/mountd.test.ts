@@ -10,7 +10,8 @@ import {
   isWriteFlag,
   listMountRegistry,
   mountRegistryPath,
-  parseMountdArgs
+  parseMountdArgs,
+  type FuseOperations
 } from "./index.js";
 
 describe("mountd config", () => {
@@ -55,7 +56,7 @@ describe("mountd FUSE operations", () => {
 
   it("rejects writes on read-only mounts", async () => {
     const core = fakeCore();
-    const ops = createFuseOperations(core, { mode: "read-only" }) as any;
+    const ops: FuseOperations = createFuseOperations(core, { mode: "read-only" });
 
     const [code] = await invoke(ops.open, "/runs/today/result.md", fsConstants.O_WRONLY);
 
@@ -64,10 +65,11 @@ describe("mountd FUSE operations", () => {
 
   it("creates, writes, flushes, and releases once", async () => {
     const core = fakeCore();
-    const ops = createFuseOperations(core, { mode: "read-write" }) as any;
+    const ops: FuseOperations = createFuseOperations(core, { mode: "read-write" });
 
     const [createCode, fd] = await invoke(ops.create, "/runs/today/result.md", 0o644);
     expect(createCode).toBe(0);
+    if (typeof fd !== "number") throw new Error("create did not return a file descriptor.");
     const [written] = await invoke(ops.write, "/runs/today/result.md", fd, Buffer.from("hello"), 5, 0);
     expect(written).toBe(5);
     expect((await invoke(ops.flush, "/runs/today/result.md", fd))[0]).toBe(0);
@@ -78,10 +80,11 @@ describe("mountd FUSE operations", () => {
 
   it("appends to the end of the handle buffer", async () => {
     const core = fakeCore({ "/runs/today/result.md": "hello" });
-    const ops = createFuseOperations(core, { mode: "read-write" }) as any;
+    const ops: FuseOperations = createFuseOperations(core, { mode: "read-write" });
 
     const [openCode, fd] = await invoke(ops.open, "/runs/today/result.md", fsConstants.O_WRONLY | fsConstants.O_APPEND);
     expect(openCode).toBe(0);
+    if (typeof fd !== "number") throw new Error("open did not return a file descriptor.");
     await invoke(ops.write, "/runs/today/result.md", fd, Buffer.from("\nagain"), 6, 0);
     await invoke(ops.release, "/runs/today/result.md", fd);
 
@@ -90,7 +93,7 @@ describe("mountd FUSE operations", () => {
 
   it("maps unlink, rename, and truncate to mount-core", async () => {
     const core = fakeCore({ "/runs/today/result.md": "hello" });
-    const ops = createFuseOperations(core, { mode: "read-write" }) as any;
+    const ops: FuseOperations = createFuseOperations(core, { mode: "read-write" });
 
     expect((await invoke(ops.unlink, "/runs/today/result.md"))[0]).toBe(0);
     expect(core.unlinks).toEqual(["/runs/today/result.md"]);
@@ -228,8 +231,15 @@ function fakeCore(initialFiles: Record<string, string> = {}): MountCore & {
   };
 }
 
-async function invoke(fn: (...args: any[]) => void, ...args: any[]): Promise<any[]> {
+type FuseTestOperation<TArgs extends unknown[], TResult extends unknown[]> = (
+  ...args: [...TArgs, (...callbackArgs: TResult) => void]
+) => void | Promise<void>;
+
+async function invoke<TArgs extends unknown[], TResult extends unknown[]>(
+  fn: FuseTestOperation<TArgs, TResult>,
+  ...args: TArgs
+): Promise<TResult> {
   return new Promise((resolve) => {
-    fn(...args, (...callbackArgs: any[]) => resolve(callbackArgs));
+    void fn(...args, (...callbackArgs: TResult) => resolve(callbackArgs));
   });
 }

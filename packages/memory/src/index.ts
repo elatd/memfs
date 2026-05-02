@@ -22,6 +22,18 @@ export const memoryTypes = [
 
 export type MemoryType = (typeof memoryTypes)[number];
 
+export const recallModes = [
+  "general",
+  "task_preparation",
+  "fact_lookup",
+  "debugging",
+  "handoff",
+  "research",
+  "decision_review"
+] as const;
+
+export type RecallMode = (typeof recallModes)[number];
+
 export interface ExtractedMemoryNode {
   summary: string;
   trigger: string;
@@ -84,15 +96,6 @@ export interface RrfRanking {
   items: RankedItem[];
   weight?: number;
 }
-
-export type RecallMode =
-  | "general"
-  | "task_preparation"
-  | "fact_lookup"
-  | "debugging"
-  | "handoff"
-  | "research"
-  | "decision_review";
 
 export interface RecallPlannerInput {
   query: string;

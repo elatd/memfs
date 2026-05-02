@@ -2,6 +2,7 @@ import { openMemoryDatabase, type SqliteDatabase } from "@memoryfs/db";
 import {
   bm25Scores,
   cosineSimilarity,
+  detectSecretRisk,
   embedText,
   extractMemoryNodesFromContent,
   extractReasoningMemoriesFromRun,
@@ -26,6 +27,18 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { AuthzProvider, PermissionAction, SyncStore } from "./adapters.js";
 
+export type {
+  CandidateSourceKind,
+  ExtractedMemoryNode,
+  ExtractedReasoningMemory,
+  MemoryModelOptions,
+  MemoryType,
+  RankedItem,
+  RecallMode,
+  RecallQueryPlan
+} from "@memoryfs/memory";
+export { memoryTypes, recallModes } from "@memoryfs/memory";
+
 export const defaultProtectedPathGlobs = [
   "/profile.md",
   "/preferences.md",
@@ -34,30 +47,35 @@ export const defaultProtectedPathGlobs = [
 ] as const;
 
 export type FileEventType = "write" | "delete" | "ingest" | "upload" | "extract";
-export type MemoryRelationType =
-  | "related_to"
-  | "supports"
-  | "contradicts"
-  | "supersedes"
-  | "duplicates"
-  | "caused_by"
-  | "derived_from"
-  | "implemented_in"
-  | "observed_in"
-  | "applies_to"
-  | "blocked_by"
-  | "belongs_to_project"
-  | "used_in_run"
-  | "promoted_from";
-export type MemoryGraphObjectType = "memory_node" | "file" | "run" | "candidate" | "reasoning_memory";
-export type MemoryTrustLevel =
-  | "ephemeral"
-  | "agent_generated"
-  | "source_backed"
-  | "reviewed"
-  | "trusted"
-  | "superseded"
-  | "rejected";
+export const memoryRelationTypes = [
+  "related_to",
+  "supports",
+  "contradicts",
+  "supersedes",
+  "duplicates",
+  "caused_by",
+  "derived_from",
+  "implemented_in",
+  "observed_in",
+  "applies_to",
+  "blocked_by",
+  "belongs_to_project",
+  "used_in_run",
+  "promoted_from"
+] as const;
+export type MemoryRelationType = (typeof memoryRelationTypes)[number];
+export const memoryGraphObjectTypes = ["memory_node", "file", "run", "candidate", "reasoning_memory"] as const;
+export type MemoryGraphObjectType = (typeof memoryGraphObjectTypes)[number];
+export const memoryTrustLevels = [
+  "ephemeral",
+  "agent_generated",
+  "source_backed",
+  "reviewed",
+  "trusted",
+  "superseded",
+  "rejected"
+] as const;
+export type MemoryTrustLevel = (typeof memoryTrustLevels)[number];
 export type MemoryCandidateStatus =
   | "observed"
   | "candidate"
@@ -81,7 +99,8 @@ export type SnapshotItemType =
 export type AgentRunStatus = "created" | "running" | "completed" | "failed" | "compiled";
 export type RunMemoryUsageType = "recalled" | "opened" | "cited" | "ignored" | "promoted";
 export type ArchiveEntryType = "conversation" | "transcript" | "imported" | "agent-run" | "raw";
-export type MemoryScope = "global" | "workspace" | "project" | "repo" | "session" | "agent" | "contact" | "run";
+export const memoryScopes = ["global", "workspace", "project", "repo", "session", "agent", "contact", "run"] as const;
+export type MemoryScope = (typeof memoryScopes)[number];
 export type MemfsMode = "local" | "team" | "cloud";
 export type TeamRole = "owner" | "admin" | "editor" | "agent" | "viewer";
 export type ConflictStatus = "unresolved" | "resolved_local" | "resolved_remote" | "resolved_manual";
@@ -333,8 +352,8 @@ export interface RecallOptions {
   agent_id?: string;
   contact_id?: string;
   mode?: RecallMode;
-  memory_types?: string[];
-  trust_levels?: string[];
+  memory_types?: MemoryType[];
+  trust_levels?: MemoryTrustLevel[];
   include_why?: boolean;
   include_contradictions?: boolean;
   include_links?: boolean;
@@ -1036,6 +1055,21 @@ export class MemoryFSError extends Error {
   ) {
     super(message);
   }
+}
+
+export function parseStringUnion<const T extends readonly string[]>(
+  values: readonly string[] | undefined,
+  allowed: T,
+  fieldName: string
+): Array<T[number]> | undefined {
+  if (!values) return undefined;
+  const allowedValues = new Set<string>(allowed);
+  return values.map((value) => {
+    if (!allowedValues.has(value)) {
+      throw new MemoryFSError(`${fieldName} contains unsupported value: ${value}`, 400);
+    }
+    return value as T[number];
+  });
 }
 
 export class MemoryFS {
@@ -5938,18 +5972,6 @@ export class MemoryFS {
     }));
   }
 
-  private insertMemoryLink(
-    workspaceId: string,
-    fromNodeId: string,
-    toNodeId: string,
-    relationType: MemoryRelationType
-  ): void {
-    this.linkMemoryNodes(workspaceId, fromNodeId, toNodeId, relationType, {
-      confidence: 0.7,
-      reason: "Legacy internal link creation."
-    });
-  }
-
   private getRelatedNodes(workspaceId: string, nodeId: string, options: { include_stale?: boolean } = {}): Array<{
     node_id: string;
     relation_type: MemoryRelationType;
@@ -7048,25 +7070,8 @@ function isCandidateConflictResolutionMode(value: string): value is CandidateCon
   return value === "keep_new" || value === "keep_old" || value === "keep_both" || value === "mark_superseded";
 }
 
-const memoryRelationTypes: MemoryRelationType[] = [
-  "related_to",
-  "supports",
-  "contradicts",
-  "supersedes",
-  "duplicates",
-  "caused_by",
-  "derived_from",
-  "implemented_in",
-  "observed_in",
-  "applies_to",
-  "blocked_by",
-  "belongs_to_project",
-  "used_in_run",
-  "promoted_from"
-];
-
 function normalizeMemoryRelationType(value: string): MemoryRelationType {
-  if ((memoryRelationTypes as string[]).includes(value)) return value as MemoryRelationType;
+  if (memoryRelationTypes.includes(value as MemoryRelationType)) return value as MemoryRelationType;
   throw new MemoryFSError(`Unsupported memory graph relation: ${value}.`);
 }
 
@@ -7904,20 +7909,6 @@ function titleForArchiveType(archiveType: ArchiveEntryType): string {
     case "imported":
       return "Imported archive";
   }
-}
-
-function detectSecretRisk(content: string): string | null {
-  const checks: Array<{ label: string; pattern: RegExp }> = [
-    { label: "private key", pattern: /-----BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----/i },
-    { label: "OpenAI-style API key", pattern: /\bsk-[A-Za-z0-9_-]{20,}\b/ },
-    { label: "GitHub token", pattern: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b/ },
-    { label: "AWS access key", pattern: /\bAKIA[0-9A-Z]{16}\b/ },
-    {
-      label: "assigned secret",
-      pattern: /\b(?:api[_-]?key|secret|password|passwd|access[_-]?token|refresh[_-]?token|auth[_-]?token)\b\s*[:=]\s*['"]?[A-Za-z0-9_./+=-]{16,}/i
-    }
-  ];
-  return checks.find((check) => check.pattern.test(content))?.label ?? null;
 }
 
 function grepPathAllowed(filePath: string, options: MemoryGrepOptions): boolean {
